@@ -12,6 +12,7 @@ const MIN_GREEN_MS = 7000;
 const MAX_GREEN_MS = 45000;
 const SAFETY_YELLOW_MS = 3000;
 const SAFETY_ALL_RED_MS = 800;
+const SEC_SAFETY = Math.ceil((SAFETY_YELLOW_MS + SAFETY_ALL_RED_MS) / 1000);
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function greenDurationFromScore(score) { const p = clamp(score, 0, 100) / 100; return Math.round(MIN_GREEN_MS + p * (MAX_GREEN_MS - MIN_GREEN_MS)); }
@@ -40,63 +41,90 @@ function RoadQueue({ count, label, green }) {
   const capped = clamp(count, 0, 20);
   return (
     <div className="flex flex-col items-center gap-1">
-      <div className={`w-12 h-[180px] rounded-xl border ${green ? "border-green-500" : "border-red-500"} bg-gray-200/60 flex flex-col justify-end items-center gap-1 p-1 overflow-hidden`}>
-        {Array.from({ length: capped }).map((_, i) => (
-          <div key={i} className="w-8 h-3 rounded-sm bg-gray-700" />
-        ))}
-      </div>
-      <div className="text-[10px] text-gray-600">{label}: {capped}</div>
-    </div>
+  <div className="text-[10px] text-gray-700 font-medium">{label} Road</div>
+  <div className={`w-12 h-[180px] rounded-xl border ${green ? "border-green-500" : "border-red-500"} bg-gray-200/60 flex flex-col justify-end items-center gap-1 p-1 overflow-hidden`}>
+    {Array.from({ length: capped }).map((_, i) => (
+      <div key={i} className="w-8 h-3 rounded-sm bg-gray-700" />
+    ))}
+  </div>
+  <div className="text-[10px] text-gray-600">Queue: {capped} cars</div>
+</div>
   );
 }
 
-function Billboard({ id, score, phase, activeDir, scenarioId, secondsLeft }) {
+function Billboard({ id, dir, isGreen, secForDir }) {
   return (
     <div className="flex items-stretch gap-2">
       <div className="flex flex-col items-center w-[240px] bg-black text-white rounded-2xl shadow-lg overflow-hidden">
-        <div className="w-full p-2 bg-gray-800 text-center text-sm font-semibold">Smart Billboard #{id}</div>
-        <div className="flex-1 flex flex-col justify-center items-center bg-gray-900 px-2 py-6 aspect-[9/16]">
-          <p className="text-sm text-center font-medium">{computeMessage(score, phase, activeDir, scenarioId, secondsLeft)}</p>
+        <div className="w-full p-2 bg-gray-800 text-center text-sm font-semibold">
+          Smart Billboard #{id}
         </div>
-        {/* нижняя зона рекламы ~40% */}
+
+        {/* индикатор статуса дороги */}
+        <div className={`h-1 w-full ${isGreen ? "bg-green-500" : "bg-red-500"}`} />
+
+        {/* основная зона сообщений (вертикальный экран) */}
+        <div className="flex-1 flex flex-col justify-center items-center bg-gray-900 px-2 py-6 aspect-[9/16]">
+          <p className="text-sm text-center font-semibold">
+            {dir}: {isGreen ? "GREEN" : "RED"}
+          </p>
+          <p className="text-xs text-center opacity-90 mt-1">
+            {isGreen ? `Ends in ${secForDir}s` : `~${secForDir}s to GREEN`}
+          </p>
+        </div>
+
+        {/* нижняя зона рекламы ~40% высоты */}
         <div className="flex gap-1 w-full h-[40%]">
-          <div className="w-1/2 bg-white text-black text-xs font-medium text-center p-2 flex items-center justify-center">Ad Left {id}</div>
-          <div className="w-1/2 bg-white text-black text-xs font-medium text-center p-2 flex items-center justify-center">Ad Right {id}</div>
+          <div className="w-1/2 bg-white text-black text-xs font-medium text-center p-2 flex items-center justify-center">
+            Ad Left {id}
+          </div>
+          <div className="w-1/2 bg-white text-black text-xs font-medium text-center p-2 flex items-center justify-center">
+            Ad Right {id}
+          </div>
         </div>
       </div>
-      {/* тонкий разделитель и очередь машин для этой дороги */}
-      <div className="flex items-center"><div className="w-[2px] h-full bg-black/20"/></div>
-      {/* сам RoadQueue рендерится снаружи, чтобы передать правильное количество */}
+
+      {/* тонкий разделитель — визуально отделяет биллборд от очереди машин */}
+      <div className="flex items-center">
+        <div className="w-[2px] h-full bg-black/20" />
+      </div>
     </div>
   );
 }
 
+
 function IntersectionMini({ counts, phase }) {
-  const [n,e,s,w] = counts;
+  const [n,e,s,w] = counts; // numbers
   return (
     <div className="relative w-full aspect-square rounded-xl bg-gray-100 overflow-hidden">
-      {/* дороги */}
       <div className="absolute inset-0">
         <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-16 bg-gray-300" />
         <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-16 bg-gray-300" />
       </div>
-      {/* машины */}
+      {/* cars */}
       <div className="absolute left-1/2 -translate-x-1/2 top-1 p-1 flex flex-col gap-1 items-center">
-        {Array.from({length: clamp(n,0,20)}).map((_,i)=>(<div key={i} className="w-10 h-3 bg-gray-700 rounded-sm"/>))}
+        {Array.from({length: Math.min(Math.max(n,0),20)}).map((_,i)=>(<div key={i} className="w-10 h-3 bg-gray-700 rounded-sm"/>))}
       </div>
       <div className="absolute right-1 top-1/2 -translate-y-1/2 p-1 flex flex-col gap-1 items-end">
-        {Array.from({length: clamp(e,0,20)}).map((_,i)=>(<div key={i} className="w-3 h-10 bg-gray-700 rounded-sm"/>))}
+        {Array.from({length: Math.min(Math.max(e,0),20)}).map((_,i)=>(<div key={i} className="w-3 h-10 bg-gray-700 rounded-sm"/>))}
       </div>
       <div className="absolute left-1/2 -translate-x-1/2 bottom-1 p-1 flex flex-col-reverse gap-1 items-center">
-        {Array.from({length: clamp(s,0,20)}).map((_,i)=>(<div key={i} className="w-10 h-3 bg-gray-700 rounded-sm"/>))}
+        {Array.from({length: Math.min(Math.max(s,0),20)}).map((_,i)=>(<div key={i} className="w-10 h-3 bg-gray-700 rounded-sm"/>))}
       </div>
       <div className="absolute left-1 top-1/2 -translate-y-1/2 p-1 flex flex-col gap-1 items-start">
-        {Array.from({length: clamp(w,0,20)}).map((_,i)=>(<div key={i} className="w-3 h-10 bg-gray-700 rounded-sm"/>))}
+        {Array.from({length: Math.min(Math.max(w,0),20)}).map((_,i)=>(<div key={i} className="w-3 h-10 bg-gray-700 rounded-sm"/>))}
       </div>
-      <div className="absolute top-2 left-2 text-[10px] bg-white/70 rounded px-1">Phase: {phase}</div>
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-2 left-2 text-[10px] bg-white/70 rounded px-1">Phase: {phase}</div>
+        <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[10px] bg-white/70 rounded px-1">North</div>
+        <div className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] bg-white/70 rounded px-1">East</div>
+        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] bg-white/70 rounded px-1">South</div>
+        <div className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] bg-white/70 rounded px-1">West</div>
+      </div>
     </div>
   );
 }
+
 
 export default function App() {
   const [scenario, setScenario] = useState(SCENARIOS[0]);
@@ -124,12 +152,13 @@ export default function App() {
     setIndex((i) => (i + 1) % scenario.timeline.length);
   }, [tick, running, phase, activeDir, score]);
 
-  const dirs = ["N", "E", "S", "W"];
+  const dirs = ["North", "East", "South", "West"];
   const isGreenMap = phase === "A"
-    ? { N: true, S: true, E: false, W: false }
-    : phase === "B"
-    ? { N: false, S: false, E: true, W: true }
-    : { N: false, E: false, S: false, W: false };
+  ? { North: true, South: true, East: false, West: false }
+  : phase === "B"
+  ? { North: false, South: false, East: true, West: true }
+  : { North: false, East: false, South: false, West: false };
+
 
   return (
     <div className="p-4 bg-gray-100 min-h-screen">
@@ -143,13 +172,22 @@ export default function App() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* LEFT: 4 billboards each with its road queue nearby */}
         <div className="grid grid-cols-2 gap-4">
-          {[1,2,3,4].map((id, idx) => (
-            <div key={id} className="flex items-stretch gap-2">
-              <Billboard id={id} score={score} phase={phase} activeDir={activeDir} scenarioId={scenario.id} secondsLeft={secondsLeft} />
-              <RoadQueue count={counts[idx]} label={dirs[idx]} green={isGreenMap[dirs[idx]]} />
-            </div>
-          ))}
-        </div>
+  {[1, 2, 3, 4].map((id, idx) => {
+    const dir = dirs[idx];
+    const isGreen = isGreenMap[dir];
+    // если зелёный — показываем оставшиеся секунды,
+    // если красный — примерное время до зелёного (конец текущей фазы + safety)
+    const secForDir = isGreen ? secondsLeft : (secondsLeft + SEC_SAFETY);
+
+    return (
+      <div key={id} className="flex items-stretch gap-2">
+        <Billboard id={id} dir={dir} isGreen={isGreen} secForDir={secForDir} />
+        <RoadQueue count={counts[idx]} label={dir} green={isGreen} />
+      </div>
+    );
+  })}
+</div>
+
 
         {/* RIGHT: Controller with mini intersection visual */}
         <div className="space-y-4">
