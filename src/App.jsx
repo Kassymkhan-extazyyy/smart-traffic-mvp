@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Play, Pause, RefreshCw, TrafficCone } from "lucide-react";
+import { Play, Pause, RefreshCw, TrafficCone, Home, BarChart3, Shield, Settings } from "lucide-react";
+
 
 const SCENARIOS = [
   { id: "free", name: "Free Flow", timeline: Array.from({ length: 600 }, (_, i) => 10 + Math.round(15 * Math.sin(i / 20))) },
@@ -59,16 +60,19 @@ return (
 function Billboard({ id, dir, isGreen, secForDir }) {
   return (
     <div className="flex items-stretch gap-2">
-      <div className="flex flex-col items-center w-[240px] bg-black text-white rounded-2xl shadow-lg overflow-hidden">
+      <div className="neu flex flex-col items-center w-[240px] bg-black text-white overflow-hidden border border-[rgba(255,255,255,.2)]">
         <div className="w-full p-2 bg-gray-800 text-center text-sm font-semibold">
           Smart Billboard #{id}
         </div>
 
         {/* индикатор статуса дороги */}
-        <div className={`h-1 w-full ${isGreen ? "bg-green-500" : "bg-red-500"}`} />
+        <div className={`h-1 w-full ${isGreen ? "bg-emerald-500" : "bg-rose-500"}`} />
 
         {/* основная зона сообщений (вертикальный экран) */}
-        <div className="flex-1 flex flex-col justify-center items-center bg-gray-900 px-2 py-6 aspect-[9/16]">
+        <div
+          className="flex-1 flex flex-col justify-center items-center px-2 py-6 aspect-[9/16]"
+          style={{ background: "linear-gradient(135deg,#0f172a 0%, #0b1a4d 60%, #0e2c8a 100%)" }}
+        >
           <p className="text-sm text-center font-semibold">
             {dir}: {isGreen ? "GREEN" : "RED"}
           </p>
@@ -95,6 +99,7 @@ function Billboard({ id, dir, isGreen, secForDir }) {
     </div>
   );
 }
+
 
 
 function IntersectionMini({ counts, phase }) {
@@ -233,40 +238,54 @@ const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 8
       {/* Top toolbar: title + scenario chips + controls */}
 <div className="sticky top-0 z-10 bg-gray-100/80 backdrop-blur mb-4">
   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 py-2">
-    <h1 className="text-2xl font-bold">Smart Billboard – MVP (Simulation)</h1>
+        <div className="sticky top-0 z-10 bg-gray-100/80 backdrop-blur mb-4">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 py-2">
+        {/* Логотип + текст */}
+    <div className="flex items-center gap-3">
+     <img src="/logo.png" alt="Logo" className="h-10 w-auto rounded-full shadow" />
+      <h1 className="text-2xl font-bold">Smart Billboard – MVP (Simulation)</h1>
+    </div>
 
-    <div className="flex flex-wrap items-center gap-2">
-      {SCENARIOS.map((s) => (
-        <button
-          key={s.id}
-          onClick={() => setScenario(s)}
-          className={`px-4 py-2 rounded-full font-medium border shadow ${scenario.id === s.id ? "bg-black text-white" : "bg-white"}`}
-        >
-          {s.name}
-        </button>
-      ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {SCENARIOS.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setScenario(s)}
+              className={`px-4 py-2 rounded-full font-medium border shadow ${
+                scenario.id === s.id ? "bg-black text-white" : "bg-white"
+              }`}
+            >
+              {s.name}
+            </button>
+          ))}
 
-      <div className="hidden md:block h-6 w-px bg-gray-300 mx-1" />
+          <div className="hidden md:block h-6 w-px bg-gray-300 mx-1" />
 
-      <button
-        onClick={() => setRunning(!running)}
-        className="px-4 py-2 bg-green-600 text-white rounded shadow"
-      >
-        {running ? <Pause className="inline w-4 h-4 mr-1" /> : <Play className="inline w-4 h-4 mr-1" />}
-        {running ? "Pause" : "Play"}
-      </button>
-      <button
-        onClick={() => {
-          setIndex(0);
-          setRunning(false);
-          setPhase("A");
-          setActiveDir("A");
-          setPhaseEndAt(Date.now() + MIN_GREEN_MS);
-        }}
-        className="px-4 py-2 bg-gray-300 rounded shadow"
-      >
-        <RefreshCw className="inline w-4 h-4 mr-1" /> Reset
-      </button>
+          <button
+            onClick={() => setRunning(!running)}
+            className="px-4 py-2 bg-green-600 text-white rounded shadow"
+          >
+            {running ? <Pause className="inline w-4 h-4 mr-1" /> : <Play className="inline w-4 h-4 mr-1" />}
+            {running ? "Pause" : "Play"}
+          </button>
+          <button
+            onClick={() => {
+              setIndex(0);
+              setRunning(false);
+              setPhase("A");
+              setActiveDir("A");
+              setPhaseEndAt(Date.now() + MIN_GREEN_MS);
+            }}
+            className="px-4 py-2 bg-gray-300 rounded shadow"
+          >
+            <RefreshCw className="inline w-4 h-4 mr-1" /> Reset
+          </button>
+        </div>
+      </div>
+    </div>
+
+    {/* Main Layout */}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
     </div>
   </div>
 </div>
@@ -293,13 +312,13 @@ const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 8
 
         {/* RIGHT: Controller with mini intersection visual */}
         <div className="space-y-4">
-          <div className="bg-white p-4 rounded-xl shadow">
+          <div className="card p-4">
             <h2 className="font-semibold flex items-center gap-2"><TrafficCone className="w-5 h-5 text-orange-500" />Intersection Controller</h2>
             <p className="text-sm">Active direction: <strong>{activeDir}</strong> | Phase: <strong>{phase}</strong></p>
             <div className="flex items-center gap-4 mt-3">
-              <div className={`w-20 h-20 rounded-full ${phase === "A" ? "bg-green-500" : "bg-gray-800"} grid place-items-center text-white`}>A</div>
-              <div className={`w-20 h-20 rounded-full ${phase === "B" ? "bg-green-500" : "bg-gray-800"} grid place-items-center text-white`}>B</div>
-              <div className={`w-20 h-20 rounded-full ${(phase === "ALLRED" || phase === "YELLOW") ? "bg-yellow-500" : "bg-gray-800"} grid place-items-center text-white`}>All</div>
+              <div className={`w-24 h-24 rounded-full ${phase === "A" ? "bg-green-500" : "bg-gray-800"} grid place-items-center text-white`}>A</div>
+              <div className={`w-24 h-24 rounded-full ${phase === "B" ? "bg-green-500" : "bg-gray-800"} grid place-items-center text-white`}>B</div>
+              <div className={`w-24 h-24 rounded-full ${(phase === "ALLRED" || phase === "YELLOW") ? "bg-yellow-500" : "bg-gray-800"} grid place-items-center text-white`}>All</div>
             </div>
             <p className="text-sm mt-2">Time left this phase: <strong>{secondsLeft}s</strong></p>
             <p className="text-xs text-gray-500">Target green (if next start): {greenDurationFromScore(score) / 1000}s</p>
@@ -308,7 +327,7 @@ const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 8
             </div>
           </div>
 
-          <div className="bg-white p-4 rounded-xl shadow text-sm">
+          <div className="card p-4 text-sm">
             <div className="font-semibold mb-1">Live Metrics</div>
             <ul className="space-y-1 text-gray-700">
               <li>Sim FPS: ~{Math.round(1000 / TICK_MS)} fps</li>

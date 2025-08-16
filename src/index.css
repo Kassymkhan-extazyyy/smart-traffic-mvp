@@ -1,0 +1,57 @@
+/* === Brand tokens === */
+:root{
+  --brand-50:#f5f9ff;
+  --brand-100:#eaf2ff;
+  --brand-200:#dbe8ff;
+  --brand-600:#2563eb; /* основной синий */
+  --brand-700:#1e40af;
+  --ink:#0b1324;
+}
+
+/* page bg */
+body{ background: linear-gradient(180deg,var(--brand-50),#fff); }
+
+/* === Soft UI helpers === */
+.card{
+  border-radius: 16px;
+  background: rgba(255,255,255,.92);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 10px 30px rgba(16,43,120,.06), 0 2px 8px rgba(16,43,120,.05);
+}
+
+.neu{
+  border-radius: 20px;
+  background: #fff;
+  box-shadow:
+    8px 8px 18px rgba(18,53,120,.08),
+    -8px -8px 18px rgba(255,255,255,.9);
+}
+
+/* components */
+.btn-primary{
+  @apply px-4 py-2 rounded-xl text-white font-medium transition;
+  background: var(--brand-600);
+  box-shadow: 0 6px 16px rgba(37,99,235,.25);
+}
+.btn-primary:hover{ filter: brightness(1.03); }
+.btn-primary:active{ transform: translateY(1px); }
+
+.btn-ghost{
+  @apply px-4 py-2 rounded-xl font-medium border transition;
+  background:#fff; border-color:#e5e7eb;
+}
+.btn-ghost:hover{ box-shadow:0 6px 16px rgba(16,43,120,.08); }
+
+.chip{
+  @apply px-3 py-1.5 rounded-full border text-sm;
+  background:#fff; border-color:#e5e7eb;
+}
+.chip--active{
+  color:#fff; background:var(--brand-600); border-color:transparent;
+}
+
+.icon-btn{
+  @apply inline-flex items-center gap-2 px-3 py-2 rounded-xl;
+  background:#fff; border:1px solid #e5e7eb;
+  box-shadow: 0 4px 12px rgba(16,43,120,.06);
+}
