@@ -43,17 +43,17 @@ function distributeCars(total, phase) {
 
 function RoadQueue({ count, label, green }) {
   const capped = clamp(count, 0, 24);
-  return (
-    <div className="flex flex-col items-center gap-1">
-  <div className="text-[10px] text-gray-700 font-medium">{label} Road</div>
-  <div className={`w-12 h-[240px] rounded-xl border ${green ? "border-green-500" : "border-red-500"} bg-gray-200/60 flex flex-col justify-end items-center gap-1 p-1 overflow-hidden`}>
-    {Array.from({ length: capped }).map((_, i) => (
-      <div key={i} className="w-8 h-2 rounded-sm bg-gray-700" />
-    ))}
+return (
+  <div className="flex flex-col items-center gap-1">
+    <div className="text-[10px] text-gray-700 font-medium">{label} Road</div>
+    <div className={`w-12 h-[240px] rounded-xl border ${green ? "border-green-500" : "border-red-500"} bg-gray-200/60 flex flex-col justify-end items-center gap-1 p-1 overflow-hidden`}>
+      {Array.from({ length: clamp(count, 0, 24) }).map((_, i) => (
+        <div key={i} className="w-8 h-2 rounded-sm bg-gray-700" />
+      ))}
+    </div>
+    <div className="text-[10px] text-gray-600">Queue: {clamp(count, 0, 24)} cars</div>
   </div>
-  <div className="text-[10px] text-gray-600">Queue: {capped} cars</div>
-</div>
-  );
+);
 }
 
 function Billboard({ id, dir, isGreen, secForDir }) {
@@ -107,17 +107,21 @@ function IntersectionMini({ counts, phase }) {
       </div>
       {/* cars */}
       <div className="absolute left-1/2 -translate-x-1/2 top-1 p-1 flex flex-col gap-1 items-center">
-        {Array.from({length: Math.min(Math.max(n,0),24)}).map((_,i)=>(<div key={i} className="w-10 h-3 bg-gray-700 rounded-sm"/>))}
+        {Array.from({length: Math.min(Math.max(n,0),24)}).map((_,i)=>(<div key={i} className="w-8 h-3 bg-gray-700 rounded-sm"/>))}
       </div>
-      <div className="absolute right-1 top-1/2 -translate-y-1/2 p-1 flex flex-col gap-1 items-end">
-        {Array.from({length: Math.min(Math.max(e,0),24)}).map((_,i)=>(<div key={i} className="w-3 h-10 bg-gray-700 rounded-sm"/>))}
-      </div>
+      <div className="absolute right-1 top-1/2 -translate-y-1/2 p-1 flex flex-row-reverse gap-1 items-center">
+  {Array.from({length: clamp(e,0,24)}).map((_,i)=>(
+    <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm"/>
+  ))}
+</div>
       <div className="absolute left-1/2 -translate-x-1/2 bottom-1 p-1 flex flex-col-reverse gap-1 items-center">
-        {Array.from({length: Math.min(Math.max(s,0),24)}).map((_,i)=>(<div key={i} className="w-10 h-3 bg-gray-700 rounded-sm"/>))}
+        {Array.from({length: Math.min(Math.max(s,0),24)}).map((_,i)=>(<div key={i} className="w-8 h-3 bg-gray-700 rounded-sm"/>))}
       </div>
-      <div className="absolute left-1 top-1/2 -translate-y-1/2 p-1 flex flex-col gap-1 items-start">
-        {Array.from({length: Math.min(Math.max(w,0),24)}).map((_,i)=>(<div key={i} className="w-3 h-10 bg-gray-700 rounded-sm"/>))}
-      </div>
+      <div className="absolute left-1 top-1/2 -translate-y-1/2 p-1 flex flex-row gap-1 items-center">
+  {Array.from({length: clamp(w,0,24)}).map((_,i)=>(
+    <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm"/>
+  ))}
+</div>
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-2 left-2 text-[10px] bg-white/70 rounded px-1">Phase: {phase}</div>
         <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[10px] bg-white/70 rounded px-1">North</div>
