@@ -28,7 +28,11 @@ function computeMessage(score, phase, activeDir, scenarioId, secondsLeft) {
 
 function distributeCars(total, phase) {
   // Распределяем машины по направлениям N,E,S,W
-  const weights = phase === "A" ? [0.2, 0.3, 0.2, 0.3] : phase === "B" ? [0.3, 0.2, 0.3, 0.2] : [0.25, 0.25, 0.25, 0.25];
+  const weights = phase === "A"
+  ? [0.15, 0.35, 0.15, 0.35]   // A=North&South зелёные -> меньше там, больше на E/W (красные)
+  : phase === "B"
+  ? [0.35, 0.15, 0.35, 0.15]   // B=East&West зелёные -> больше на N/S (красные)
+  : [0.25, 0.25, 0.25, 0.25];
   const raw = weights.map(w => total * w);
   const base = raw.map(v => Math.floor(v));
   let sum = base.reduce((a,b)=>a+b,0);
@@ -38,13 +42,13 @@ function distributeCars(total, phase) {
 }
 
 function RoadQueue({ count, label, green }) {
-  const capped = clamp(count, 0, 20);
+  const capped = clamp(count, 0, 24);
   return (
     <div className="flex flex-col items-center gap-1">
   <div className="text-[10px] text-gray-700 font-medium">{label} Road</div>
-  <div className={`w-12 h-[180px] rounded-xl border ${green ? "border-green-500" : "border-red-500"} bg-gray-200/60 flex flex-col justify-end items-center gap-1 p-1 overflow-hidden`}>
+  <div className={`w-12 h-[240px] rounded-xl border ${green ? "border-green-500" : "border-red-500"} bg-gray-200/60 flex flex-col justify-end items-center gap-1 p-1 overflow-hidden`}>
     {Array.from({ length: capped }).map((_, i) => (
-      <div key={i} className="w-8 h-3 rounded-sm bg-gray-700" />
+      <div key={i} className="w-8 h-2 rounded-sm bg-gray-700" />
     ))}
   </div>
   <div className="text-[10px] text-gray-600">Queue: {capped} cars</div>
@@ -103,16 +107,16 @@ function IntersectionMini({ counts, phase }) {
       </div>
       {/* cars */}
       <div className="absolute left-1/2 -translate-x-1/2 top-1 p-1 flex flex-col gap-1 items-center">
-        {Array.from({length: Math.min(Math.max(n,0),20)}).map((_,i)=>(<div key={i} className="w-10 h-3 bg-gray-700 rounded-sm"/>))}
+        {Array.from({length: Math.min(Math.max(n,0),24)}).map((_,i)=>(<div key={i} className="w-10 h-3 bg-gray-700 rounded-sm"/>))}
       </div>
       <div className="absolute right-1 top-1/2 -translate-y-1/2 p-1 flex flex-col gap-1 items-end">
-        {Array.from({length: Math.min(Math.max(e,0),20)}).map((_,i)=>(<div key={i} className="w-3 h-10 bg-gray-700 rounded-sm"/>))}
+        {Array.from({length: Math.min(Math.max(e,0),24)}).map((_,i)=>(<div key={i} className="w-3 h-10 bg-gray-700 rounded-sm"/>))}
       </div>
       <div className="absolute left-1/2 -translate-x-1/2 bottom-1 p-1 flex flex-col-reverse gap-1 items-center">
-        {Array.from({length: Math.min(Math.max(s,0),20)}).map((_,i)=>(<div key={i} className="w-10 h-3 bg-gray-700 rounded-sm"/>))}
+        {Array.from({length: Math.min(Math.max(s,0),24)}).map((_,i)=>(<div key={i} className="w-10 h-3 bg-gray-700 rounded-sm"/>))}
       </div>
       <div className="absolute left-1 top-1/2 -translate-y-1/2 p-1 flex flex-col gap-1 items-start">
-        {Array.from({length: Math.min(Math.max(w,0),20)}).map((_,i)=>(<div key={i} className="w-3 h-10 bg-gray-700 rounded-sm"/>))}
+        {Array.from({length: Math.min(Math.max(w,0),24)}).map((_,i)=>(<div key={i} className="w-3 h-10 bg-gray-700 rounded-sm"/>))}
       </div>
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute top-2 left-2 text-[10px] bg-white/70 rounded px-1">Phase: {phase}</div>
@@ -138,7 +142,12 @@ export default function App() {
   const score = useMemo(() => scenario.timeline[clamp(index, 0, scenario.timeline.length - 1)], [index, scenario]);
   const msLeft = Math.max(0, phaseEndAt - Date.now());
   const secondsLeft = Math.ceil(msLeft / 1000);
-  const totalCars = Math.round(score / 5); // 0..20
+  const baseCars = Math.round(score / 5);
+const scenarioFactor =
+  scenario.id === "free"       ? 0.9 :
+  scenario.id === "congestion" ? 2.0 :
+  /* incident */                 1.6;
+const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 80 машин суммарно
   const counts = useMemo(() => distributeCars(totalCars, phase), [totalCars, phase]); // [N,E,S,W]
 
   useEffect(() => {
