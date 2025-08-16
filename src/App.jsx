@@ -162,12 +162,46 @@ export default function App() {
 
   return (
     <div className="p-4 bg-gray-100 min-h-screen">
-      <h1 className="text-2xl font-bold mb-4">Smart Billboard – MVP (Simulation)</h1>
-      <div className="flex gap-2 mb-4">
-        {SCENARIOS.map((s) => (
-          <button key={s.id} onClick={() => setScenario(s)} className={`px-4 py-2 rounded-full font-medium border shadow ${scenario.id === s.id ? "bg-black text-white" : "bg-white"}`}>{s.name}</button>
-        ))}
-      </div>
+      {/* Top toolbar: title + scenario chips + controls */}
+<div className="sticky top-0 z-10 bg-gray-100/80 backdrop-blur mb-4">
+  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 py-2">
+    <h1 className="text-2xl font-bold">Smart Billboard – MVP (Simulation)</h1>
+
+    <div className="flex flex-wrap items-center gap-2">
+      {SCENARIOS.map((s) => (
+        <button
+          key={s.id}
+          onClick={() => setScenario(s)}
+          className={`px-4 py-2 rounded-full font-medium border shadow ${scenario.id === s.id ? "bg-black text-white" : "bg-white"}`}
+        >
+          {s.name}
+        </button>
+      ))}
+
+      <div className="hidden md:block h-6 w-px bg-gray-300 mx-1" />
+
+      <button
+        onClick={() => setRunning(!running)}
+        className="px-4 py-2 bg-green-600 text-white rounded shadow"
+      >
+        {running ? <Pause className="inline w-4 h-4 mr-1" /> : <Play className="inline w-4 h-4 mr-1" />}
+        {running ? "Pause" : "Play"}
+      </button>
+      <button
+        onClick={() => {
+          setIndex(0);
+          setRunning(false);
+          setPhase("A");
+          setActiveDir("A");
+          setPhaseEndAt(Date.now() + MIN_GREEN_MS);
+        }}
+        className="px-4 py-2 bg-gray-300 rounded shadow"
+      >
+        <RefreshCw className="inline w-4 h-4 mr-1" /> Reset
+      </button>
+    </div>
+  </div>
+</div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* LEFT: 4 billboards each with its road queue nearby */}
@@ -218,10 +252,7 @@ export default function App() {
         </div>
       </div>
 
-      <div className="mt-6 flex gap-2">
-        <button onClick={() => setRunning(!running)} className="px-4 py-2 bg-green-600 text-white rounded shadow">{running ? <Pause className="inline w-4 h-4 mr-1" /> : <Play className="inline w-4 h-4 mr-1" />}{running ? "Pause" : "Play"}</button>
-        <button onClick={() => { setIndex(0); setRunning(false); setPhase("A"); setActiveDir("A"); setPhaseEndAt(Date.now() + MIN_GREEN_MS); }} className="px-4 py-2 bg-gray-300 rounded shadow"><RefreshCw className="inline w-4 h-4 mr-1" /> Reset</button>
-      </div>
+      
     </div>
   );
 }
