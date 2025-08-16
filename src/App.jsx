@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useRef } from "react";
 import { Play, Pause, RefreshCw, TrafficCone } from "lucide-react";
 
 const SCENARIOS = [
@@ -133,6 +133,16 @@ function IntersectionMini({ counts, phase }) {
   );
 }
 
+async function getModelDecision(payload) {
+  const res = await fetch("/api/decision", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  if (!res.ok) throw new Error("Model API failed");
+  return res.json(); // { nextDir, greenMs, reason }
+}
+
 
 export default function App() {
   const [scenario, setScenario] = useState(SCENARIOS[0]);
@@ -141,6 +151,9 @@ export default function App() {
   const [phase, setPhase] = useState("A"); // "A" | "B" | "YELLOW" | "ALLRED"
   const [phaseEndAt, setPhaseEndAt] = useState(Date.now() + MIN_GREEN_MS);
   const [activeDir, setActiveDir] = useState("A");
+  const [waitSec, setWaitSec] = useState([0, 0, 0, 0]); // N,E,S,W в секундах
+const prevCountsRef = useRef([0, 0, 0, 0]);
+const [lastGreenDir, setLastGreenDir] = useState("A"); // "A" или "B"
   const tick = useTicker(running);
 
   const score = useMemo(() => scenario.timeline[clamp(index, 0, scenario.timeline.length - 1)], [index, scenario]);
@@ -159,7 +172,49 @@ const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 8
     if (Date.now() >= phaseEndAt) {
       if (phase === "A") { setPhase("YELLOW"); setPhaseEndAt(Date.now() + SAFETY_YELLOW_MS); }
       else if (phase === "YELLOW") { setPhase("ALLRED"); setPhaseEndAt(Date.now() + SAFETY_ALL_RED_MS); }
-      else if (phase === "ALLRED") { const nextDir = activeDir === "A" ? "B" : "A"; setActiveDir(nextDir); setPhase(nextDir); setPhaseEndAt(Date.now() + greenDurationFromScore(score)); }
+      else if (phase === "ALLRED") {
+  // вычислим признак «шёл ли отток на прошлой зелёной оси»
+  const prev = prevCountsRef.current;
+  const curNS = counts[0] + counts[2];
+  const curEW = counts[1] + counts[3];
+  const prevNS = prev[0] + prev[2];
+  const prevEW = prev[1] + prev[3];
+  const outflowNS = lastGreenDir === "A" && prevNS > curNS;
+  const outflowEW = lastGreenDir === "B" && prevEW > curEW;
+
+  // подготовим полезную нагрузку для решателя
+  const payload = {
+    counts: { N: counts[0], E: counts[1], S: counts[2], W: counts[3] },
+    waits:  { N: waitSec[0], E: waitSec[1], S: waitSec[2], W: waitSec[3] },
+    scenarioId: scenario.id,
+    lastGreenDir,
+    outflowNS,
+    outflowEW
+  };
+
+  getModelDecision(payload)
+    .then(({ nextDir, greenMs }) => {
+      const bounded = clamp(
+        greenMs ?? greenDurationFromScore(score),
+        MIN_GREEN_MS,
+        MAX_GREEN_MS
+      );
+      const dir = nextDir === "A" || nextDir === "B"
+        ? nextDir
+        : (activeDir === "A" ? "B" : "A");
+      setActiveDir(dir);
+      setPhase(dir);
+      setPhaseEndAt(Date.now() + bounded);
+    })
+    .catch(() => {
+      // запасной вариант — прежняя формула
+      const fallback = greenDurationFromScore(score);
+      const dir = activeDir === "A" ? "B" : "A";
+      setActiveDir(dir);
+      setPhase(dir);
+      setPhaseEndAt(Date.now() + fallback);
+    });
+}
       else if (phase === "B") { setPhase("YELLOW"); setPhaseEndAt(Date.now() + SAFETY_YELLOW_MS); }
     }
     setIndex((i) => (i + 1) % scenario.timeline.length);
@@ -264,8 +319,6 @@ const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 8
           </div>
         </div>
       </div>
-
-      
     </div>
   );
 }
