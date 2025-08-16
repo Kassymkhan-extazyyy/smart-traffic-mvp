@@ -242,7 +242,7 @@ const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 8
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 py-2">
         {/* Логотип + текст */}
     <div className="flex items-center gap-3">
-     <img src="/logo.png" alt="Logo" className="h-10 w-auto rounded-full shadow" />
+     <img src="/logo.png" alt="Logo" className="h-12 w-auto rounded-full shadow" />
       <h1 className="text-2xl font-bold">Smart Billboard – MVP (Simulation)</h1>
     </div>
 
