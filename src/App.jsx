@@ -247,39 +247,60 @@ const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 8
     </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {SCENARIOS.map((s) => (
-            <button
-              key={s.id}
-              onClick={() => setScenario(s)}
-              className={`px-4 py-2 rounded-full font-medium border shadow ${
-                scenario.id === s.id ? "bg-black text-white" : "bg-white"
-              }`}
-            >
-              {s.name}
-            </button>
-          ))}
+          {SCENARIOS.map((s) => {
+  const active = scenario.id === s.id;
+  return (
+    <button
+      key={s.id}
+      onClick={() => setScenario(s)}
+      aria-pressed={active}
+      className={`relative px-4 py-2 rounded-full font-medium border
+        transition duration-200 ease-out
+        focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
+        ${active
+          ? "bg-black text-white shadow-lg ring-1 ring-black/30 hover:shadow-xl active:scale-[0.98]"
+          : "bg-white text-gray-800 shadow hover:shadow-md active:scale-95"}
+      `}
+    >
+      <span className="pointer-events-none">{s.name}</span>
+      {/* мягкое «свечение» для активной */}
+      <span
+        className={`absolute inset-0 rounded-full transition-opacity
+          ${active ? "opacity-20" : "opacity-0"} bg-white`}
+        aria-hidden="true"
+      />
+    </button>
+  );
+})}
 
           <div className="hidden md:block h-6 w-px bg-gray-300 mx-1" />
 
           <button
-            onClick={() => setRunning(!running)}
-            className="px-4 py-2 bg-green-600 text-white rounded shadow"
-          >
-            {running ? <Pause className="inline w-4 h-4 mr-1" /> : <Play className="inline w-4 h-4 mr-1" />}
-            {running ? "Pause" : "Play"}
-          </button>
-          <button
-            onClick={() => {
-              setIndex(0);
-              setRunning(false);
-              setPhase("A");
-              setActiveDir("A");
-              setPhaseEndAt(Date.now() + MIN_GREEN_MS);
-            }}
-            className="px-4 py-2 bg-gray-300 rounded shadow"
-          >
-            <RefreshCw className="inline w-4 h-4 mr-1" /> Reset
-          </button>
+  onClick={() => setRunning(!running)}
+  className={`px-6 py-2 rounded-xl font-semibold transition 
+    shadow-lg hover:scale-105 active:scale-95
+    ${running 
+      ? "bg-gradient-to-r from-rose-500 to-red-600 text-white shadow-red-300/50" 
+      : "bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-green-300/50"}`}
+>
+  {running ? <Pause className="inline w-5 h-5 mr-2" /> : <Play className="inline w-5 h-5 mr-2" />}
+  {running ? "Pause" : "Play"}
+</button>
+
+<button
+  onClick={() => {
+    setIndex(0);
+    setRunning(false);
+    setPhase("A");
+    setActiveDir("A");
+    setPhaseEndAt(Date.now() + MIN_GREEN_MS);
+  }}
+  className="px-6 py-2 rounded-xl font-semibold transition
+    bg-gradient-to-r from-gray-200 to-gray-300 text-gray-800
+    shadow-lg hover:scale-105 active:scale-95"
+>
+  <RefreshCw className="inline w-5 h-5 mr-2" /> Reset
+</button>
         </div>
       </div>
     </div>
