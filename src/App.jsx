@@ -60,26 +60,23 @@ return (
 function Billboard({ id, dir, isGreen, secForDir }) {
   return (
     <div className="flex items-stretch gap-2">
-      <div className="neu flex flex-col items-center w-[240px] bg-black text-white overflow-hidden border border-[rgba(255,255,255,.2)]">
-        <div className="w-full p-2 bg-gray-800 text-center text-sm font-semibold">
-          Smart Billboard #{id}
-        </div>
+      <div className="neu flex flex-col items-center w-[240px] text-white overflow-hidden border border-[rgba(255,255,255,.2)]">
+  <div className="w-full p-2 bg-gray-800 text-center text-sm font-semibold">
+    Smart Billboard #{id}
+  </div>
 
-        {/* индикатор статуса дороги */}
-        <div className={`h-1 w-full ${isGreen ? "bg-emerald-500" : "bg-rose-500"}`} />
+  {/* индикатор */}
+  <div className={`h-1 w-full ${isGreen ? "bg-emerald-500" : "bg-rose-500"}`} />
 
-        {/* основная зона сообщений (вертикальный экран) */}
-        <div
-          className="flex-1 flex flex-col justify-center items-center px-2 py-6 aspect-[9/16]"
-          style={{ background: "linear-gradient(135deg,#0f172a 0%, #0b1a4d 60%, #0e2c8a 100%)" }}
-        >
-          <p className="text-sm text-center font-semibold">
-            {dir}: {isGreen ? "GREEN" : "RED"}
-          </p>
-          <p className="text-xs text-center opacity-90 mt-1">
-            {isGreen ? `Ends in ${secForDir}s` : `~${secForDir}s to GREEN`}
-          </p>
-        </div>
+  {/* основная зона с фоном-градиентом */}
+  <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-b from-blue-900 via-blue-800 to-blue-600 w-full">
+    <p className="text-sm text-center font-semibold">
+      {dir}: {isGreen ? "GREEN" : "RED"}
+    </p>
+    <p className="text-xs text-center opacity-90 mt-1">
+      {isGreen ? `Ends in ${secForDir}s` : `~${secForDir}s to GREEN`}
+    </p>
+  </div>
 
         {/* нижняя зона рекламы ~40% высоты */}
         <div className="flex gap-1 w-full h-[40%]">
