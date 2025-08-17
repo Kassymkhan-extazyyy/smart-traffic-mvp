@@ -79,14 +79,22 @@ function Billboard({ id, dir, isGreen, secForDir }) {
   </div>
 
         {/* нижняя зона рекламы ~40% высоты */}
-        <div className="flex gap-1 w-full h-[40%]">
-          <div className="w-1/2 bg-white text-black text-xs font-medium text-center p-2 flex items-center justify-center">
-            Ad Left {id}
-          </div>
-          <div className="w-1/2 bg-white text-black text-xs font-medium text-center p-2 flex items-center justify-center">
-            Ad Right {id}
-          </div>
-        </div>
+<div className="flex w-full h-[40%] relative px-2 pb-2">
+  {/* Левая реклама */}
+  <div className="flex-1 bg-white text-black text-xs font-medium text-center 
+                  p-2 flex items-center justify-center rounded-l-lg shadow-sm border">
+    Ad Left {id}
+  </div>
+
+  {/* Разделительная линия */}
+  <div className="w-[2px] bg-gradient-to-b from-black/40 via-black/60 to-black/40"></div>
+
+  {/* Правая реклама */}
+  <div className="flex-1 bg-white text-black text-xs font-medium text-center 
+                  p-2 flex items-center justify-center rounded-r-lg shadow-sm border">
+    Ad Right {id}
+  </div>
+</div>
       </div>
 
       {/* тонкий разделитель — визуально отделяет биллборд от очереди машин */}
