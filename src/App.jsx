@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState, useRef } from "react";
-import { Play, Pause, RefreshCw, TrafficCone, Home, BarChart3, Shield, Settings } from "lucide-react";
+import { Play, Pause, RefreshCw, TrafficCone, Home, BarChart3, Shield, Settings, Cpu, CircuitBoard, Wifi } from "lucide-react";
 
 
 const SCENARIOS = [
@@ -58,49 +58,58 @@ return (
 }
 
 function Billboard({ id, dir, isGreen, secForDir }) {
+  // набор слайдов (можно заменить своим контентом/картинками)
+  const slides = useMemo(()=>[
+    { id: 'ad1', cls: 'ad-g-blue',   text: 'City Wi‑Fi • Connected Everywhere' },
+    { id: 'ad2', cls: 'ad-g-green',  text: 'Eco‑Transit • Clean Mobility' },
+    { id: 'ad3', cls: 'ad-g-purple', text: 'Smart Energy • AI‑Optimized' },
+    { id: 'ad4', cls: 'ad-g-cyan',   text: 'BaQdarsham • Smarter Cities' },
+  ], []);
+
+  const [idx, setIdx] = useState(0);
+
+  useEffect(()=>{
+    const t = setInterval(()=> setIdx(i => (i+1) % slides.length), 5000); // каждые 5s
+    return ()=> clearInterval(t);
+  }, [slides.length]);
+
   return (
     <div className="flex items-stretch gap-2">
-      <div className="neu flex flex-col items-center w-[240px] text-white overflow-hidden border border-[rgba(255,255,255,.2)]">
-  <div className="w-full p-2 bg-gray-800 text-center text-sm font-semibold">
-    Smart Billboard #{id}
-  </div>
+      <div className="neu flex flex-col items-center w-[240px] text-white overflow-hidden border border-[rgba(255,255,255,.2)] rounded-xl">
+        <div className="w-full p-2 bg-gray-800 text-center text-sm font-semibold">
+          Smart Billboard #{id}
+        </div>
 
-  {/* индикатор */}
-  <div className={`h-1 w-full ${isGreen ? "bg-emerald-500" : "bg-rose-500"}`} />
+        {/* индикатор статуса светофора */}
+        <div className={`h-1 w-full ${isGreen ? "bg-emerald-500" : "bg-rose-500"}`} />
 
-  {/* основная зона с фоном-градиентом */}
-  <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-b from-blue-900 via-blue-800 to-blue-600 w-full">
-    <p className="text-sm text-center font-semibold">
-      {dir}: {isGreen ? "GREEN" : "RED"}
-    </p>
-    <p className="text-xs text-center opacity-90 mt-1">
-      {isGreen ? `Ends in ${secForDir}s` : `~${secForDir}s to GREEN`}
-    </p>
-  </div>
+        {/* статус направления */}
+        <div className="flex-1 flex flex-col items-center justify-center bg-gradient-to-b from-blue-900 via-blue-800 to-blue-600 w-full">
+          <p className={`text-base text-center font-bold ${
+              isGreen ? "drop-shadow-[0_0_6px_rgba(34,197,94,0.8)] text-emerald-300"
+                      : "drop-shadow-[0_0_6px_rgba(239,68,68,0.8)] text-rose-300"
+            }`}>
+            {dir}: {isGreen ? "GREEN" : "RED"}
+          </p>
+          <p className="text-sm text-center opacity-90 mt-1 drop-shadow-[0_0_4px_rgba(255,255,255,0.6)]">
+            {isGreen ? `Ends in ${secForDir}s` : `~${secForDir}s to GREEN`}
+          </p>
+        </div>
 
-        {/* нижняя зона рекламы ~40% высоты */}
-<div className="flex w-full h-[40%] relative px-2 pb-2">
-  {/* Левая реклама */}
-  <div className="flex-1 bg-white text-black text-xs font-medium text-center 
-                  p-2 flex items-center justify-center rounded-l-lg shadow-sm border">
-    Ad Left {id}
-  </div>
-
-  {/* Разделительная линия */}
-  <div className="w-[2px] bg-gradient-to-b from-black/40 via-black/60 to-black/40"></div>
-
-  {/* Правая реклама */}
-  <div className="flex-1 bg-white text-black text-xs font-medium text-center 
-                  p-2 flex items-center justify-center rounded-r-lg shadow-sm border">
-    Ad Right {id}
-  </div>
-</div>
+        {/* РЕКЛАМА: нижняя зона ~40% — ротатор */}
+        <div className="w-full h-[40%] p-2">
+          <div className="ad-surface h-full neon-ring">
+            {slides.map((s, i)=>(
+              <div key={s.id} className={`ad-slide ${i===idx?'visible':'hidden'} ${s.cls}`}>
+                <span className="text-xs sm:text-sm">{s.text}</span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
-      {/* тонкий разделитель — визуально отделяет биллборд от очереди машин */}
-      <div className="flex items-center">
-        <div className="w-[2px] h-full bg-black/20" />
-      </div>
+      {/* разделитель + очередь машин */}
+      <div className="flex items-center"><div className="w-[2px] h-full bg-black/20" /></div>
     </div>
   );
 }
@@ -108,31 +117,87 @@ function Billboard({ id, dir, isGreen, secForDir }) {
 
 
 function IntersectionMini({ counts, phase }) {
-  const [n,e,s,w] = counts; // numbers
+  const [n, e, s, w] = counts;
+
+  // Кварталы вокруг перекрёстка (проценты — чтобы масштабировалось)
+  const BLOCKS = [
+    // Левый верхний
+    { left: "3%",  top: "6%",  width: "7%",  height: "7%",   cls: "city-block small" },
+    { left: "13%", top: "7%",  width: "9%",  height: "6.5%", cls: "city-block" },
+    { left: "6%",  top: "16%", width: "8%",  height: "7.5%", cls: "city-block tiny" },
+
+    // Правый верхний
+    { left: "74%", top: "6%",  width: "8%",  height: "7%",   cls: "city-block small" },
+    { left: "84%", top: "8%",  width: "10%", height: "6.5%", cls: "city-block" },
+    { left: "80%", top: "17%", width: "8%",  height: "7%",   cls: "city-block tiny" },
+
+    // Левый нижний
+    { left: "5%",  top: "72%", width: "9%",  height: "7%",   cls: "city-block" },
+    { left: "15%", top: "82%", width: "8%",  height: "6.5%", cls: "city-block small" },
+
+    // Правый нижний
+    { left: "78%", top: "74%", width: "9%",  height: "7%",   cls: "city-block" },
+    { left: "90%", top: "82%", width: "7%",  height: "6%",   cls: "city-block tiny" },
+
+    // Крупнее, по краям дорог
+    { left: "3%",  top: "42%", width: "14%", height: "10%",  cls: "city-block" },
+    { left: "83%", top: "42%", width: "14%", height: "10%",  cls: "city-block" },
+    { left: "42%", top: "3%",  width: "10%", height: "14%",  cls: "city-block" },
+    { left: "42%", top: "83%", width: "10%", height: "14%",  cls: "city-block" },
+  ];
+
   return (
     <div className="relative w-full aspect-square rounded-xl bg-gray-100 overflow-hidden">
-      <div className="absolute inset-0">
-        <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-16 bg-gray-300" />
-        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-16 bg-gray-300" />
+      {/* Кварталы (низкий слой) */}
+      <div className="absolute inset-0 z-0">
+        {BLOCKS.map((b, i) => (
+          <div
+            key={i}
+            className={b.cls}
+            style={{ left: b.left, top: b.top, width: b.width, height: b.height }}
+          />
+        ))}
       </div>
-      {/* cars */}
-      <div className="absolute left-1/2 -translate-x-1/2 top-1 p-1 flex flex-col gap-1 items-center">
-        {Array.from({length: Math.min(Math.max(n,0),24)}).map((_,i)=>(<div key={i} className="w-8 h-3 bg-gray-700 rounded-sm"/>))}
+
+      {/* Дороги (выше кварталов) */}
+      <div className="absolute inset-0 z-10">
+       
+        <div className="lane-dash" />
       </div>
-      <div className="absolute right-1 top-1/2 -translate-y-1/2 p-1 flex flex-row-reverse gap-1 items-center">
-  {Array.from({length: clamp(e,0,24)}).map((_,i)=>(
-    <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm"/>
-  ))}
+      <div className="relative w-full aspect-square rounded-xl overflow-hidden">
+  {/* дороги */}
+  <div className="absolute inset-0 road">
+    <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-16 asphalt" />
+    <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-16 asphalt" />
+    <div className="lane-dash" />
+  </div>
 </div>
-      <div className="absolute left-1/2 -translate-x-1/2 bottom-1 p-1 flex flex-col-reverse gap-1 items-center">
-        {Array.from({length: Math.min(Math.max(s,0),24)}).map((_,i)=>(<div key={i} className="w-8 h-3 bg-gray-700 rounded-sm"/>))}
+
+
+      {/* Машины */}
+      <div className="absolute left-1/2 -translate-x-1/2 top-1 p-1 flex flex-col gap-1 items-center z-20">
+        {Array.from({ length: clamp(n, 0, 24) }).map((_, i) => (
+          <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm" />
+        ))}
       </div>
-      <div className="absolute left-1 top-1/2 -translate-y-1/2 p-1 flex flex-row gap-1 items-center">
-  {Array.from({length: clamp(w,0,24)}).map((_,i)=>(
-    <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm"/>
-  ))}
-</div>
-      <div className="absolute inset-0 pointer-events-none">
+      <div className="absolute right-1 top-1/2 -translate-y-1/2 p-1 flex flex-row-reverse gap-1 items-center z-20">
+        {Array.from({ length: clamp(e, 0, 24) }).map((_, i) => (
+          <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm" />
+        ))}
+      </div>
+      <div className="absolute left-1/2 -translate-x-1/2 bottom-1 p-1 flex flex-col-reverse gap-1 items-center z-20">
+        {Array.from({ length: clamp(s, 0, 24) }).map((_, i) => (
+          <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm" />
+        ))}
+      </div>
+      <div className="absolute left-1 top-1/2 -translate-y-1/2 p-1 flex flex-row gap-1 items-center z-20">
+        {Array.from({ length: clamp(w, 0, 24) }).map((_, i) => (
+          <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm" />
+        ))}
+      </div>
+
+      {/* Подписи */}
+      <div className="absolute inset-0 pointer-events-none z-30">
         <div className="absolute top-2 left-2 text-[10px] bg-white/70 rounded px-1">Phase: {phase}</div>
         <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[10px] bg-white/70 rounded px-1">North</div>
         <div className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] bg-white/70 rounded px-1">East</div>
@@ -142,6 +207,8 @@ function IntersectionMini({ counts, phase }) {
     </div>
   );
 }
+
+
 
 async function getModelDecision(payload) {
   const res = await fetch("/api/decision", {
@@ -179,6 +246,7 @@ function MiniCross({ activeAxis, phase }) {
 
 
 export default function App() {
+  const [theme, setTheme] = useState("day");
   const [scenario, setScenario] = useState(SCENARIOS[0]);
   const [running, setRunning] = useState(false);
   const [index, setIndex] = useState(0);
@@ -288,17 +356,36 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
 
 
   return (
-    <div className="p-4 bg-gray-100 min-h-screen">
+    <div className={`relative min-h-screen p-4 smartcity-bg smartcity-noise ${theme==='night' ? 'theme-night' : 'theme-day'}`}>
       {/* Top toolbar: title + scenario chips + controls */}
-<div className="sticky top-0 z-10 bg-gray-100/80 backdrop-blur mb-4">
+<div className="sticky top-0 z-10 mb-4 bg-white/95 shadow-sm">
   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 py-2">
-        <div className="sticky top-0 z-10 bg-gray-100/80 backdrop-blur mb-4">
+        <div className="sticky top-0 z-10 mb-4">
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 py-2">
+
+
         {/* Логотип + текст */}
     <div className="flex items-center gap-3">
-     <img src="/logo.png" alt="Logo" className="h-12 w-auto rounded-full shadow" />
-      <h1 className="text-2xl font-bold">Smart Billboard – MVP (Simulation)</h1>
-    </div>
+  <img src="/logo.png" alt="Logo" className="h-12 w-auto rounded-full shadow" />
+  <h1 className="text-2xl font-bold">Smart Billboard – MVP (Simulation)</h1>
+
+
+
+
+  {/* Smart City chips */}
+  <div className="hidden md:flex items-center gap-2 ml-2">
+    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-white/70 backdrop-blur border border-white/50 shadow-sm">
+      <Cpu className="w-3.5 h-3.5" /> AI
+    </span>
+    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-white/70 backdrop-blur border border-white/50 shadow-sm">
+      <CircuitBoard className="w-3.5 h-3.5" /> Edge
+    </span>
+    <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-white/70 backdrop-blur border border-white/50 shadow-sm">
+      <Wifi className="w-3.5 h-3.5" /> IoT
+    </span>
+  </div>
+</div>
+
 
         <div className="flex flex-wrap items-center gap-2">
           {SCENARIOS.map((s) => {
@@ -359,9 +446,7 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
       </div>
     </div>
 
-    {/* Main Layout */}
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    </div>
+    
   </div>
 </div>
 
@@ -390,11 +475,23 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
           <div className="card p-4">
             <h2 className="font-semibold flex items-center gap-2"><TrafficCone className="w-5 h-5 text-orange-500" />Intersection Controller</h2>
             <p className="text-sm">Active direction: <strong>{activeDir}</strong> | Phase: <strong>{phase}</strong></p>
-            <div className="flex items-center gap-4 mt-3">
-              <div className={`w-24 h-24 rounded-full ${phase === "A" ? "bg-green-500" : "bg-gray-800"} grid place-items-center text-white`}>A</div>
-              <div className={`w-24 h-24 rounded-full ${phase === "B" ? "bg-green-500" : "bg-gray-800"} grid place-items-center text-white`}>B</div>
-              <div className={`w-24 h-24 rounded-full ${(phase === "ALLRED" || phase === "YELLOW") ? "bg-yellow-500" : "bg-gray-800"} grid place-items-center text-white`}>All</div>
-            </div>
+            <div className="flex items-center gap-6 mt-3">
+  {/* Вертикальная ось (A) */}
+  <div className="flex flex-col items-center gap-1">
+    <div className={`w-10 h-10 rounded-full border-2 border-black ${phase==="A" ? "bg-green-500 shadow-[0_0_10px_3px_rgba(34,197,94,0.7)]" : "bg-gray-700"}`} />
+    <span className="text-xs text-gray-600">North/South</span>
+  </div>
+  {/* Горизонтальная ось (B) */}
+  <div className="flex flex-col items-center gap-1">
+    <div className={`w-10 h-10 rounded-full border-2 border-black ${phase==="B" ? "bg-green-500 shadow-[0_0_10px_3px_rgba(34,197,94,0.7)]" : "bg-gray-700"}`} />
+    <span className="text-xs text-gray-600">East/West</span>
+  </div>
+  {/* Safety */}
+  <div className="flex flex-col items-center gap-1">
+    <div className={`w-10 h-10 rounded-full border-2 border-black ${(phase==="ALLRED"||phase==="YELLOW") ? "bg-yellow-400 shadow-[0_0_10px_3px_rgba(250,204,21,0.7)]" : "bg-gray-700"}`} />
+    <span className="text-xs text-gray-600">Safety</span>
+  </div>
+</div>
             <p className="text-sm mt-2">Time left this phase: <strong>{secondsLeft}s</strong></p>
             <p className="text-xs text-gray-500">Target green (if next start): {greenDurationFromScore(score) / 1000}s</p>
             <div className="mt-4">
