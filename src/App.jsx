@@ -153,6 +153,30 @@ async function getModelDecision(payload) {
   return res.json(); // { nextDir, greenMs, reason }
 }
 
+function MiniCross({ activeAxis, phase }) {
+  // activeAxis: "A" (North-South) | "B" (East-West)
+  const glowA = activeAxis === "A" && phase === "A";
+  const glowB = activeAxis === "B" && phase === "B";
+  return (
+    <div className="relative w-full h-56 rounded-xl bg-slate-100 overflow-hidden">
+      {/* вертикальная ось */}
+      <div className={`absolute left-1/2 -translate-x-1/2 inset-y-0 w-20 rounded-md 
+                       ${glowA ? "bg-emerald-200" : "bg-slate-300"}`}>
+        {glowA && <div className="absolute inset-0 bg-emerald-400/30 blur-xl" />}
+      </div>
+      {/* горизонтальная ось */}
+      <div className={`absolute top-1/2 -translate-y-1/2 inset-x-0 h-20 rounded-md 
+                       ${glowB ? "bg-emerald-200" : "bg-slate-300"}`}>
+        {glowB && <div className="absolute inset-0 bg-emerald-400/30 blur-xl" />}
+      </div>
+      {/* подписи сторон (минимал) */}
+      <span className="absolute top-2 left-2 text-[10px] text-slate-600">North</span>
+      <span className="absolute bottom-2 left-2 text-[10px] text-slate-600">West</span>
+      <span className="absolute bottom-2 right-2 text-[10px] text-slate-600">East</span>
+    </div>
+  );
+}
+
 
 export default function App() {
   const [scenario, setScenario] = useState(SCENARIOS[0]);
@@ -165,6 +189,24 @@ export default function App() {
 const prevCountsRef = useRef([0, 0, 0, 0]);
 const [lastGreenDir, setLastGreenDir] = useState("A"); // "A" или "B"
   const tick = useTicker(running);
+  useEffect(() => {
+  if (!running) return;
+
+  setWaitSec(prev => {
+    const isA = phase === "A";
+    const isB = phase === "B";
+
+    // N,S зелёные на A; E,W зелёные на B
+    const green = [isA, isB, isA, isB]; // индексы 0=N,1=E,2=S,3=W
+
+    const next = [...prev];
+    for (let i = 0; i < 4; i++) {
+      next[i] = green[i] ? 0 : Math.min(prev[i] + Math.ceil(TICK_MS / 1000), 3600); // кап 1ч
+    }
+    return next;
+  });
+}, [tick, running, phase]);
+
 
   const score = useMemo(() => scenario.timeline[clamp(index, 0, scenario.timeline.length - 1)], [index, scenario]);
   const msLeft = Math.max(0, phaseEndAt - Date.now());
@@ -176,6 +218,12 @@ const scenarioFactor =
   /* incident */                 1.6;
 const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 80 машин суммарно
   const counts = useMemo(() => distributeCars(totalCars, phase), [totalCars, phase]); // [N,E,S,W]
+  // live‑сообщение «мозга»
+const infoMessage = computeMessage(score, phase, activeDir, scenario.id, secondsLeft);
+  useEffect(() => {
+  prevCountsRef.current = counts;
+}, [counts]);
+
 
   useEffect(() => {
     if (!running) return;
@@ -213,6 +261,7 @@ const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 8
         ? nextDir
         : (activeDir === "A" ? "B" : "A");
       setActiveDir(dir);
+      setLastGreenDir(dir);
       setPhase(dir);
       setPhaseEndAt(Date.now() + bounded);
     })
@@ -327,7 +376,7 @@ const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 8
     const secForDir = isGreen ? secondsLeft : (secondsLeft + SEC_SAFETY);
 
     return (
-      <div key={id} className="flex items-stretch gap-2">
+      <div key={dir} className="flex items-stretch gap-2">
         <Billboard id={id} dir={dir} isGreen={isGreen} secForDir={secForDir} />
         <RoadQueue count={counts[idx]} label={dir} green={isGreen} />
       </div>
