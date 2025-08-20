@@ -382,3 +382,38 @@ body{ background: linear-gradient(180deg,var(--brand-50),#fff); }
   opacity: .85;
 }
 
+.theme-day {
+  --road-color: #c8cdd5;
+  --asphalt-color: #9aa3af;
+  --sky-bg: #f3f4f6;
+  --building-opacity: 0.35;
+}
+
+.theme-night {
+  --road-color: #374151;
+  --asphalt-color: #1f2937;
+  --sky-bg: #111827;
+  --building-opacity: 0.6;
+}
+
+/* применяй переменные */
+.road { background: var(--road-color); }
+.asphalt { background: var(--asphalt-color); }
+.smartcity-bg { background-color: var(--sky-bg); }
+.city-skyline-strong { opacity: var(--building-opacity); }
+
+/* “окна” в домах ночью */
+.theme-night .city-skyline-strong::after {
+  content:"";
+  position:absolute; inset:0;
+  background-image: radial-gradient(circle, #fbbf24 1px, transparent 1px);
+  background-size: 20px 20px;
+  opacity:.3;
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;  /* IE/Edge */
+  scrollbar-width: none;     /* Firefox */
+}
+.hide-scrollbar::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+

@@ -257,6 +257,18 @@ export default function App() {
 const prevCountsRef = useRef([0, 0, 0, 0]);
 const [lastGreenDir, setLastGreenDir] = useState("A"); // "A" или "B"
   const tick = useTicker(running);
+
+  // при старте — восстановить
+useEffect(() => {
+  const saved = localStorage.getItem('theme');
+  if (saved === 'day' || saved === 'night') setTheme(saved);
+}, []);
+
+// при смене — сохранить
+useEffect(() => {
+  localStorage.setItem('theme', theme);
+}, [theme]);
+
   useEffect(() => {
   if (!running) return;
 
@@ -395,6 +407,7 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
 
 
 
+
   {/* Smart City chips */}
   <div className="hidden md:flex items-center gap-2 ml-2">
     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs bg-white/70 backdrop-blur border border-white/50 shadow-sm">
@@ -465,6 +478,31 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
 >
   <RefreshCw className="inline w-5 h-5 mr-2" /> Reset
 </button>
+<div className="flex items-center gap-2">
+  <button
+    onClick={() => setTheme('day')}
+    aria-pressed={theme === 'day'}
+    className={`px-4 py-2 rounded-xl font-semibold border transition-all duration-200 transform
+      ${theme === 'day'
+        ? 'bg-white text-gray-900 border-gray-300 shadow-lg ring-2 ring-yellow-300 scale-105'
+        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:shadow-sm hover:scale-105 active:scale-95'}`}
+  >
+    ☀️ Day
+  </button>
+
+  <button
+    onClick={() => setTheme('night')}
+    aria-pressed={theme === 'night'}
+    className={`px-4 py-2 rounded-xl font-semibold border transition-all duration-200 transform
+      ${theme === 'night'
+        ? 'bg-gradient-to-r from-slate-800 to-slate-900 text-white shadow-lg ring-2 ring-indigo-400 scale-105'
+        : 'bg-white text-gray-600 border-gray-200 hover:border-gray-300 hover:shadow-sm hover:scale-105 active:scale-95'}`}
+  >
+    🌙 Night
+  </button>
+</div>
+
+
 {/* Incident side picker */}
 {scenario.id === "incident" && (
   <div className="flex items-center gap-1 ml-1">
@@ -547,6 +585,8 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
     <span className="text-xs text-gray-600">Yellow</span>
   </div>
 </div>
+
+
             <p className="text-sm mt-2">Time left this phase: <strong>{secondsLeft}s</strong></p>
             <p className="text-xs text-gray-500">Target green (if next start): {greenDurationFromScore(score) / 1000}s</p>
             <div className="mt-4">
