@@ -493,24 +493,6 @@ body{ background: linear-gradient(180deg,var(--brand-50),#fff); }
   z-index: 20;               /* поверх дороги */
 }
 
-/* ===== Sky fog / clouds ===== */
-.sky-fog {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;                 /* ниже интерфейса, но над фоном контейнера */
-  opacity: .14;               /* аккуратная прозрачность */
-  background-image:
-    radial-gradient(200px 140px at 10% 15%, rgba(255,255,255,.6), transparent 60%),
-    radial-gradient(260px 180px at 70% 10%, rgba(255,255,255,.4), transparent 65%),
-    radial-gradient(220px 160px at 30% 90%, rgba(255,255,255,.5), transparent 60%),
-    radial-gradient(260px 160px at 85% 80%, rgba(255,255,255,.35), transparent 60%);
-  background-repeat: no-repeat;
-  background-position: 0 0, 0 0, 0 0, 0 0;
-  animation: fogDrift 120s linear infinite;
-  mix-blend-mode: lighten;    /* днём мягко высветляет, ночью почти не заметен */
-}
-
 
 
 
