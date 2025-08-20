@@ -139,6 +139,7 @@ function IntersectionMini({ counts, phase }) {
 
   return (
     <div className="relative w-full aspect-square rounded-xl mini-map overflow-hidden">
+      <div className="relative z-10"></div>
       {/* Дома (низкий слой, только по углам) */}
       <div className="absolute inset-0 z-0">
         {BLOCKS.map((b, i) => (
@@ -158,12 +159,15 @@ function IntersectionMini({ counts, phase }) {
 
 
       {/* Дороги (выше домов) */}
-      <div className="absolute inset-0 z-10">
-        <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-16 asphalt rounded-md" />
-        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-16 asphalt rounded-md" />
-        <div className="absolute ... asphalt rounded-md ring-1 ring-black/10" />
-        <div className="lane-dash" />
-      </div>
+<div className="absolute inset-0 z-10">
+  {/* вертикальная и горизонтальная магистрали */}
+  <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-16 asphalt rounded-md" />
+  <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-16 asphalt rounded-md" />
+
+  {/* пунктир разметки */}
+  <div className="lane-dash" />
+</div>
+
 
       {/* Машины (над дорогами) */}
       <div className="absolute left-1/2 -translate-x-1/2 top-1 p-1 flex flex-col gap-1 items-center z-20">
@@ -185,6 +189,11 @@ function IntersectionMini({ counts, phase }) {
         {Array.from({ length: clamp(w, 0, 24) }).map((_, i) => (
           <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm" />
         ))}
+        <div className="absolute left-1/2 -translate-x-1/2 top-1 p-1 flex flex-col gap-1 items-center z-30">...</div>
+<div className="absolute right-1 top-1/2 -translate-y-1/2 p-1 flex flex-row-reverse gap-1 items-center z-30">...</div>
+<div className="absolute left-1/2 -translate-x-1/2 bottom-1 p-1 flex flex-col-reverse gap-1 items-center z-30">...</div>
+<div className="absolute left-1 top-1/2 -translate-y-1/2 p-1 flex flex-row gap-1 items-center z-30">...</div>
+
       </div>
 
   
@@ -339,17 +348,7 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
     const prevEW = prev[1] + prev[3];
     const outflowNS = lastGreenDir === "A" && prevNS > curNS;
     const outflowEW = lastGreenDir === "B" && prevEW > curEW;
-    // плавный «поток» для анимации машин (0..1)
-const [flow, setFlow] = useState(0);
-
-useEffect(() => {
-  if (!running) return;
-  // шаг анимации — 0.02 ≈ 50 кадров на цикл
-  const id = setInterval(() => {
-    setFlow(f => (f + 0.02) % 1);
-  }, TICK_MS); // синхронно с тиком симуляции
-  return () => clearInterval(id);
-}, [running]);
+    
 
     const payload = {
       counts: { N: counts[0], E: counts[1], S: counts[2], W: counts[3] },

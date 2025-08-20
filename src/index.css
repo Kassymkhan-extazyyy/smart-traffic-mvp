@@ -482,16 +482,6 @@ body{ background: linear-gradient(180deg,var(--brand-50),#fff); }
     0 1px 2px rgba(0,0,0,.45);
 }
 
-.crosswalk {
-  background-image: repeating-linear-gradient(
-    90deg,
-    #ffffff 0 14px,          /* белая полоса */
-    transparent 14px 28px    /* промежуток */
-  );
-  background-size: 28px 100%;
-  opacity: 1;                /* без прозрачности */
-  z-index: 20;               /* поверх дороги */
-}
 
 
 
