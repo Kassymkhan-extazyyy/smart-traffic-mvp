@@ -411,9 +411,107 @@ body{ background: linear-gradient(180deg,var(--brand-50),#fff); }
   opacity:.3;
 }
 
-.hide-scrollbar {
-  -ms-overflow-style: none;  /* IE/Edge */
-  scrollbar-width: none;     /* Firefox */
+.city-block{
+  position:absolute; border-radius:6px;
+  background:
+    linear-gradient(180deg, rgba(0,0,0,.05), rgba(0,0,0,.08)),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 6px, transparent 6px 12px);
+  box-shadow:
+    inset 0 0 0 1px rgba(0,0,0,.07),
+    0 1px 2px rgba(0,0,0,.05);
+  opacity:.55;
 }
-.hide-scrollbar::-webkit-scrollbar { display: none; } /* Chrome/Safari */
+.city-block.small{ border-radius:5px; }
+.city-block.tiny{ border-radius:4px; opacity:.48; }
+
+/* Ночной «свет в окнах» (ты уже добавлял — на всякий) */
+@keyframes twinkle { 0%,100%{opacity:.0} 5%{opacity:.35} 6%{opacity:.1} 15%{opacity:.4} 16%{opacity:.08} 50%{opacity:.22} }
+.theme-night .city-block::after{
+  content:""; position:absolute; inset:8% 10%;
+  background:
+    repeating-linear-gradient(90deg, rgba(255,214,102,.9) 0 6px, transparent 6px 14px),
+    repeating-linear-gradient(0deg,  rgba(255,214,102,.9) 0 6px, transparent 6px 16px);
+  filter: drop-shadow(0 0 2px rgba(255,214,102,.8));
+  mix-blend-mode: screen;
+  opacity:.18; animation: twinkle 6s linear infinite;
+}
+
+/* фон мини‑карты зависит от темы */
+.theme-day .mini-map {
+  background: #eef2f7;            /* светлый, как раньше */
+}
+
+.theme-night .mini-map {
+  background: #0b1020;            /* тёмный «небесный» */
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.06);
+}
+
+/* кварталы ночью чуть темнее и тише */
+.theme-night .city-block {
+  opacity: .45;
+  filter: brightness(.85);
+}
+
+/* разметка полос в ночи не слепит */
+.theme-night .lane-dash {
+  opacity: .7;
+}
+
+.theme-night .mini-map::after {
+  content: "";
+  position: absolute; inset: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='0.75' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.25'/%3E%3C/svg%3E");
+  opacity: .05;
+}
+
+/* Днём — как было */
+.theme-day .city-block{
+  opacity:.55;
+  filter:none;
+}
+
+/* Ночью — немного светлее базу и контур, чтобы было видно на тёмном фоне */
+.theme-night .city-block{
+  opacity:.70;              /* было .45 — поднимем */
+  filter:none;              /* уберём лишнее затемнение */
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.08)),
+    repeating-linear-gradient(90deg, rgba(255,255,255,.10) 0 6px, transparent 6px 12px);
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.06),
+    0 1px 2px rgba(0,0,0,.45);
+}
+
+.crosswalk {
+  background-image: repeating-linear-gradient(
+    90deg,
+    #ffffff 0 14px,          /* белая полоса */
+    transparent 14px 28px    /* промежуток */
+  );
+  background-size: 28px 100%;
+  opacity: 1;                /* без прозрачности */
+  z-index: 20;               /* поверх дороги */
+}
+
+/* ===== Sky fog / clouds ===== */
+.sky-fog {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;                 /* ниже интерфейса, но над фоном контейнера */
+  opacity: .14;               /* аккуратная прозрачность */
+  background-image:
+    radial-gradient(200px 140px at 10% 15%, rgba(255,255,255,.6), transparent 60%),
+    radial-gradient(260px 180px at 70% 10%, rgba(255,255,255,.4), transparent 65%),
+    radial-gradient(220px 160px at 30% 90%, rgba(255,255,255,.5), transparent 60%),
+    radial-gradient(260px 160px at 85% 80%, rgba(255,255,255,.35), transparent 60%);
+  background-repeat: no-repeat;
+  background-position: 0 0, 0 0, 0 0, 0 0;
+  animation: fogDrift 120s linear infinite;
+  mix-blend-mode: lighten;    /* днём мягко высветляет, ночью почти не заметен */
+}
+
+
+
+
 

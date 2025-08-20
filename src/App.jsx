@@ -118,62 +118,54 @@ function Billboard({ id, dir, isGreen, secForDir }) {
 function IntersectionMini({ counts, phase }) {
   const [n, e, s, w] = counts;
 
-  // Кварталы вокруг перекрёстка (проценты — чтобы масштабировалось)
+  // Дома только в 4-х углах. Центр (где дороги) — пустой.
   const BLOCKS = [
-    // Левый верхний
-    { left: "3%",  top: "6%",  width: "7%",  height: "7%",   cls: "city-block small" },
-    { left: "13%", top: "7%",  width: "9%",  height: "6.5%", cls: "city-block" },
-    { left: "6%",  top: "16%", width: "8%",  height: "7.5%", cls: "city-block tiny" },
+    // ── NW (верх-лево)
+    { l: 4,  t: 4,  w: 10, h: 7 },  { l: 15, t: 5,  w: 8,  h: 6 },
+    { l: 7,  t: 14, w: 9,  h: 7 },  { l: 18, t: 14, w: 7,  h: 6 },
 
-    // Правый верхний
-    { left: "74%", top: "6%",  width: "8%",  height: "7%",   cls: "city-block small" },
-    { left: "84%", top: "8%",  width: "10%", height: "6.5%", cls: "city-block" },
-    { left: "80%", top: "17%", width: "8%",  height: "7%",   cls: "city-block tiny" },
+    // ── NE (верх-право)
+    { l: 74, t: 5,  w: 10, h: 7 },  { l: 86, t: 6,  w: 9,  h: 7 },
+    { l: 77, t: 14, w: 9,  h: 7 },  { l: 88, t: 15, w: 7,  h: 6 },
 
-    // Левый нижний
-    { left: "5%",  top: "72%", width: "9%",  height: "7%",   cls: "city-block" },
-    { left: "15%", top: "82%", width: "8%",  height: "6.5%", cls: "city-block small" },
+    // ── SW (низ-лево)
+    { l: 6,  t: 75, w: 10, h: 7 },  { l: 17, t: 76, w: 8,  h: 6 },
+    { l: 8,  t: 84, w: 9,  h: 7 },  { l: 19, t: 85, w: 7,  h: 6 },
 
-    // Правый нижний
-    { left: "78%", top: "74%", width: "9%",  height: "7%",   cls: "city-block" },
-    { left: "90%", top: "82%", width: "7%",  height: "6%",   cls: "city-block tiny" },
-
-    // Крупнее, по краям дорог
-    { left: "3%",  top: "42%", width: "14%", height: "10%",  cls: "city-block" },
-    { left: "83%", top: "42%", width: "14%", height: "10%",  cls: "city-block" },
-    { left: "42%", top: "3%",  width: "10%", height: "14%",  cls: "city-block" },
-    { left: "42%", top: "83%", width: "10%", height: "14%",  cls: "city-block" },
+    // ── SE (низ-право)
+    { l: 76, t: 74, w: 10, h: 7 },  { l: 88, t: 75, w: 9,  h: 7 },
+    { l: 79, t: 83, w: 9,  h: 7 },  { l: 90, t: 84, w: 7,  h: 6 },
   ];
 
   return (
-    <div className="relative w-full aspect-square rounded-xl bg-gray-100 overflow-hidden">
-      {/* Кварталы (низкий слой) */}
+    <div className="relative w-full aspect-square rounded-xl mini-map overflow-hidden">
+      {/* Дома (низкий слой, только по углам) */}
       <div className="absolute inset-0 z-0">
         {BLOCKS.map((b, i) => (
           <div
             key={i}
-            className={b.cls}
-            style={{ left: b.left, top: b.top, width: b.width, height: b.height }}
+            className="city-block"
+            style={{
+              left: `${b.l}%`,
+              top: `${b.t}%`,
+              width: `${b.w}%`,
+              height: `${b.h}%`,
+            }}
           />
         ))}
       </div>
 
-      {/* Дороги (выше кварталов) */}
+
+
+      {/* Дороги (выше домов) */}
       <div className="absolute inset-0 z-10">
-       
+        <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-16 asphalt rounded-md" />
+        <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-16 asphalt rounded-md" />
+        <div className="absolute ... asphalt rounded-md ring-1 ring-black/10" />
         <div className="lane-dash" />
       </div>
-      <div className="relative w-full aspect-square rounded-xl overflow-hidden">
-  {/* дороги */}
-  <div className="absolute inset-0 road">
-    <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-16 asphalt" />
-    <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-16 asphalt" />
-    <div className="lane-dash" />
-  </div>
-</div>
 
-
-      {/* Машины */}
+      {/* Машины (над дорогами) */}
       <div className="absolute left-1/2 -translate-x-1/2 top-1 p-1 flex flex-col gap-1 items-center z-20">
         {Array.from({ length: clamp(n, 0, 24) }).map((_, i) => (
           <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm" />
@@ -195,6 +187,9 @@ function IntersectionMini({ counts, phase }) {
         ))}
       </div>
 
+  
+
+
       {/* Подписи */}
       <div className="absolute inset-0 pointer-events-none z-30">
         <div className="absolute top-2 left-2 text-[10px] bg-white/70 rounded px-1">Phase: {phase}</div>
@@ -206,6 +201,7 @@ function IntersectionMini({ counts, phase }) {
     </div>
   );
 }
+
 
 
 
@@ -343,6 +339,17 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
     const prevEW = prev[1] + prev[3];
     const outflowNS = lastGreenDir === "A" && prevNS > curNS;
     const outflowEW = lastGreenDir === "B" && prevEW > curEW;
+    // плавный «поток» для анимации машин (0..1)
+const [flow, setFlow] = useState(0);
+
+useEffect(() => {
+  if (!running) return;
+  // шаг анимации — 0.02 ≈ 50 кадров на цикл
+  const id = setInterval(() => {
+    setFlow(f => (f + 0.02) % 1);
+  }, TICK_MS); // синхронно с тиком симуляции
+  return () => clearInterval(id);
+}, [running]);
 
     const payload = {
       counts: { N: counts[0], E: counts[1], S: counts[2], W: counts[3] },
@@ -379,6 +386,9 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
   }
 }
 
+
+
+
     setIndex((i) => (i + 1) % scenario.timeline.length);
   }, [tick, running, phase, activeDir, score]);
 
@@ -388,6 +398,7 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
   : phase === "B"
   ? { North: false, South: false, East: true, West: true }
   : { North: false, East: false, South: false, West: false };
+  
 
 
   return (
