@@ -12,15 +12,14 @@ const TICK_MS = 100;
 const MIN_GREEN_MS = 7000;
 const MAX_GREEN_MS = 45000;
 const SAFETY_YELLOW_MS = 3000;
-const SAFETY_ALL_RED_MS = 800;
-const SEC_SAFETY = Math.ceil((SAFETY_YELLOW_MS + SAFETY_ALL_RED_MS) / 1000);
+const SEC_SAFETY = Math.ceil(SAFETY_YELLOW_MS / 1000);
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function greenDurationFromScore(score) { const p = clamp(score, 0, 100) / 100; return Math.round(MIN_GREEN_MS + p * (MAX_GREEN_MS - MIN_GREEN_MS)); }
 function useTicker(running) { const [tick, setTick] = useState(0); useEffect(() => { if (!running) return; const id = setInterval(() => setTick((t) => t + 1), TICK_MS); return () => clearInterval(id); }, [running]); return tick; }
 function isGreenActive(phase, activeDir) { return (phase === "A" && activeDir === "A") || (phase === "B" && activeDir === "B"); }
 function computeMessage(score, phase, activeDir, scenarioId, secondsLeft) {
-  if (phase === "YELLOW" || phase === "ALLRED") return "Safety phase. Please wait.";
+  if (phase === "YELLOW") return "Safety phase. Please wait.";
   if (scenarioId === "incident" && score > 85) { const base = "Incident ahead. Adjusting phase."; return isGreenActive(phase, activeDir) ? `${base} ${secondsLeft}s left.` : base; }
   if (score > 65) { const base = `High traffic. Extending ${activeDir} green.`; return isGreenActive(phase, activeDir) ? `${base} ${secondsLeft}s left.` : base; }
   if (score < 30) { const base = "Low traffic. Faster switching."; return isGreenActive(phase, activeDir) ? `${base} ${secondsLeft}s left.` : base; }
@@ -247,10 +246,11 @@ function MiniCross({ activeAxis, phase }) {
 
 export default function App() {
   const [theme, setTheme] = useState("day");
+  const [incidentSide, setIncidentSide] = useState(null); // "N" | "E" | "S" | "W" | null
   const [scenario, setScenario] = useState(SCENARIOS[0]);
   const [running, setRunning] = useState(false);
   const [index, setIndex] = useState(0);
-  const [phase, setPhase] = useState("A"); // "A" | "B" | "YELLOW" | "ALLRED"
+  const [phase, setPhase] = useState("A"); // "A" | "B" | "YELLOW"
   const [phaseEndAt, setPhaseEndAt] = useState(Date.now() + MIN_GREEN_MS);
   const [activeDir, setActiveDir] = useState("A");
   const [waitSec, setWaitSec] = useState([0, 0, 0, 0]); // N,E,S,W в секундах
@@ -285,7 +285,25 @@ const scenarioFactor =
   scenario.id === "congestion" ? 2.0 :
   /* incident */                 1.6;
 const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 80 машин суммарно
-  const counts = useMemo(() => distributeCars(totalCars, phase), [totalCars, phase]); // [N,E,S,W]
+const baseCounts = useMemo(() => distributeCars(totalCars, phase), [totalCars, phase]); // [N,E,S,W]
+
+// усиливаем очередь на стороне инцидента (если выбран)
+const counts = useMemo(() => {
+  if (scenario.id !== "incident" || !incidentSide) return baseCounts;
+  const idxMap = { N: 0, E: 1, S: 2, W: 3 };
+  const idx = idxMap[incidentSide] ?? null;
+  if (idx === null) return baseCounts.slice();
+
+  const boosted = baseCounts.slice();
+  // добавим «пробку» на стороне инцидента: +35% от суммарных машин, но с ограничением
+  boosted[idx] = clamp(boosted[idx] + Math.ceil(totalCars * 0.35), 0, 24);
+
+  // по желанию — слегка «снять» с противоположной стороны, чтобы суммарно смотрелось реалистично
+  const opposite = (idx + 2) % 4;
+  boosted[opposite] = clamp(boosted[opposite] - Math.ceil(totalCars * 0.10), 0, 24);
+
+  return boosted;
+}, [baseCounts, scenario.id, incidentSide, totalCars]);
   // live‑сообщение «мозга»
 const infoMessage = computeMessage(score, phase, activeDir, scenario.id, secondsLeft);
   useEffect(() => {
@@ -296,54 +314,59 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
   useEffect(() => {
     if (!running) return;
     if (Date.now() >= phaseEndAt) {
-      if (phase === "A") { setPhase("YELLOW"); setPhaseEndAt(Date.now() + SAFETY_YELLOW_MS); }
-      else if (phase === "YELLOW") { setPhase("ALLRED"); setPhaseEndAt(Date.now() + SAFETY_ALL_RED_MS); }
-      else if (phase === "ALLRED") {
-  // вычислим признак «шёл ли отток на прошлой зелёной оси»
-  const prev = prevCountsRef.current;
-  const curNS = counts[0] + counts[2];
-  const curEW = counts[1] + counts[3];
-  const prevNS = prev[0] + prev[2];
-  const prevEW = prev[1] + prev[3];
-  const outflowNS = lastGreenDir === "A" && prevNS > curNS;
-  const outflowEW = lastGreenDir === "B" && prevEW > curEW;
+  if (phase === "A") {
+    setPhase("YELLOW");
+    setPhaseEndAt(Date.now() + SAFETY_YELLOW_MS);
 
-  // подготовим полезную нагрузку для решателя
-  const payload = {
-    counts: { N: counts[0], E: counts[1], S: counts[2], W: counts[3] },
-    waits:  { N: waitSec[0], E: waitSec[1], S: waitSec[2], W: waitSec[3] },
-    scenarioId: scenario.id,
-    lastGreenDir,
-    outflowNS,
-    outflowEW
-  };
+  } else if (phase === "B") {
+    setPhase("YELLOW");
+    setPhaseEndAt(Date.now() + SAFETY_YELLOW_MS);
 
-  getModelDecision(payload)
-    .then(({ nextDir, greenMs }) => {
-      const bounded = clamp(
-        greenMs ?? greenDurationFromScore(score),
-        MIN_GREEN_MS,
-        MAX_GREEN_MS
-      );
-      const dir = nextDir === "A" || nextDir === "B"
-        ? nextDir
-        : (activeDir === "A" ? "B" : "A");
-      setActiveDir(dir);
-      setLastGreenDir(dir);
-      setPhase(dir);
-      setPhaseEndAt(Date.now() + bounded);
-    })
-    .catch(() => {
-      // запасной вариант — прежняя формула
-      const fallback = greenDurationFromScore(score);
-      const dir = activeDir === "A" ? "B" : "A";
-      setActiveDir(dir);
-      setPhase(dir);
-      setPhaseEndAt(Date.now() + fallback);
-    });
+  } else if (phase === "YELLOW") {
+    // === решаем куда включать зелёный ===
+    const prev = prevCountsRef.current;
+    const curNS = counts[0] + counts[2];
+    const curEW = counts[1] + counts[3];
+    const prevNS = prev[0] + prev[2];
+    const prevEW = prev[1] + prev[3];
+    const outflowNS = lastGreenDir === "A" && prevNS > curNS;
+    const outflowEW = lastGreenDir === "B" && prevEW > curEW;
+
+    const payload = {
+      counts: { N: counts[0], E: counts[1], S: counts[2], W: counts[3] },
+      waits:  { N: waitSec[0], E: waitSec[1], S: waitSec[2], W: waitSec[3] },
+      scenarioId: scenario.id,
+      lastGreenDir,
+      outflowNS,
+      outflowEW,
+      incidentSide
+    };
+
+    getModelDecision(payload)
+      .then(({ nextDir, greenMs }) => {
+        const bounded = clamp(
+          greenMs ?? greenDurationFromScore(score),
+          MIN_GREEN_MS,
+          MAX_GREEN_MS
+        );
+        const dir = nextDir === "A" || nextDir === "B"
+          ? nextDir
+          : (activeDir === "A" ? "B" : "A");
+        setActiveDir(dir);
+        setLastGreenDir(dir);
+        setPhase(dir);
+        setPhaseEndAt(Date.now() + bounded);
+      })
+      .catch(() => {
+        const fallback = greenDurationFromScore(score);
+        const dir = activeDir === "A" ? "B" : "A";
+        setActiveDir(dir);
+        setPhase(dir);
+        setPhaseEndAt(Date.now() + fallback);
+      });
+  }
 }
-      else if (phase === "B") { setPhase("YELLOW"); setPhaseEndAt(Date.now() + SAFETY_YELLOW_MS); }
-    }
+
     setIndex((i) => (i + 1) % scenario.timeline.length);
   }, [tick, running, phase, activeDir, score]);
 
@@ -442,6 +465,31 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
 >
   <RefreshCw className="inline w-5 h-5 mr-2" /> Reset
 </button>
+{/* Incident side picker */}
+{scenario.id === "incident" && (
+  <div className="flex items-center gap-1 ml-1">
+    {["N","E","S","W"].map((side) => (
+      <button
+        key={side}
+        onClick={() => setIncidentSide(side)}
+        className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold border
+          ${incidentSide===side ? "bg-red-500 text-white border-red-500"
+                                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"}`}
+        title={`Incident at ${side}`}
+      >
+        🚧 {side}
+      </button>
+    ))}
+    {/* сброс выбора */}
+    <button
+      onClick={() => setIncidentSide(null)}
+      className="px-2.5 py-1.5 rounded-lg text-xs font-medium border bg-white text-gray-600 hover:bg-gray-50"
+      title="Clear incident"
+    >
+      Clear
+    </button>
+  </div>
+)}
         </div>
       </div>
     </div>
@@ -474,6 +522,13 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
         <div className="space-y-4">
           <div className="card p-4">
             <h2 className="font-semibold flex items-center gap-2"><TrafficCone className="w-5 h-5 text-orange-500" />Intersection Controller</h2>
+
+            <p className="text-xs text-rose-600 mt-1">
+  {scenario.id === "incident"
+    ? (incidentSide ? `Incident at: ${incidentSide}` : "Incident: pick a side (N/E/S/W)")
+    : null}
+</p>
+
             <p className="text-sm">Active direction: <strong>{activeDir}</strong> | Phase: <strong>{phase}</strong></p>
             <div className="flex items-center gap-6 mt-3">
   {/* Вертикальная ось (A) */}
@@ -488,8 +543,8 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
   </div>
   {/* Safety */}
   <div className="flex flex-col items-center gap-1">
-    <div className={`w-10 h-10 rounded-full border-2 border-black ${(phase==="ALLRED"||phase==="YELLOW") ? "bg-yellow-400 shadow-[0_0_10px_3px_rgba(250,204,21,0.7)]" : "bg-gray-700"}`} />
-    <span className="text-xs text-gray-600">Safety</span>
+    <div className={`w-10 h-10 rounded-full border-2 border-black ${phase==="YELLOW" ? "bg-yellow-400 shadow-[0_0_10px_3px_rgba(250,204,21,0.7)]" : "bg-gray-700"}`} />
+    <span className="text-xs text-gray-600">Yellow</span>
   </div>
 </div>
             <p className="text-sm mt-2">Time left this phase: <strong>{secondsLeft}s</strong></p>
