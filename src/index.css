@@ -89,7 +89,7 @@ body{ background: linear-gradient(180deg,var(--brand-50),#fff); }
 /* ===== Smart‑City Backdrop & Noise ===== */
 .smartcity-bg{
   background:
-    radial-gradient(60vw 60vw at 80% -10%, rgba(59,130,246,.12), transparent 60%),
+    radial-gradient(60vw 60vw at 80% -10%, rgba(11, 100, 244, 0.12), transparent 60%),
     radial-gradient(40vw 40vw at 10% -10%, rgba(16,185,129,.10), transparent 60%),
     linear-gradient(180deg, #eef2f7 0%, #e9edf3 40%, #e7ebf1 100%);
 }
@@ -482,6 +482,14 @@ body{ background: linear-gradient(180deg,var(--brand-50),#fff); }
     0 1px 2px rgba(0,0,0,.45);
 }
 
+.mini-map canvas { will-change: transform; }
+
+.car {
+  width: 28px;
+  height: 10px;
+  border-radius: 3px;
+  background: #4b5563;
+}
 
 
 

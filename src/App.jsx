@@ -115,102 +115,343 @@ function Billboard({ id, dir, isGreen, secForDir }) {
 
 
 
-function IntersectionMini({ counts, phase }) {
-  const [n, e, s, w] = counts;
+function IntersectionMini({ counts, phase, theme = 'day' }) {
+  const canvasRef = React.useRef(null);
+  const animRef   = React.useRef(null);
+  const lastTsRef = React.useRef(0);
 
-  // Дома только в 4-х углах. Центр (где дороги) — пустой.
-  const BLOCKS = [
-    // ── NW (верх-лево)
-    { l: 4,  t: 4,  w: 10, h: 7 },  { l: 15, t: 5,  w: 8,  h: 6 },
-    { l: 7,  t: 14, w: 9,  h: 7 },  { l: 18, t: 14, w: 7,  h: 6 },
+  // === 2 полосы в каждую сторону ===
+  // carsRef[dir][lane] -> массив машин, lane: 0 (внутренняя), 1 (внешняя)
+  const carsRef   = React.useRef({
+    N: [[], []],
+    E: [[], []],
+    S: [[], []],
+    W: [[], []],
+  });
 
-    // ── NE (верх-право)
-    { l: 74, t: 5,  w: 10, h: 7 },  { l: 86, t: 6,  w: 9,  h: 7 },
-    { l: 77, t: 14, w: 9,  h: 7 },  { l: 88, t: 15, w: 7,  h: 6 },
-
-    // ── SW (низ-лево)
-    { l: 6,  t: 75, w: 10, h: 7 },  { l: 17, t: 76, w: 8,  h: 6 },
-    { l: 8,  t: 84, w: 9,  h: 7 },  { l: 19, t: 85, w: 7,  h: 6 },
-
-    // ── SE (низ-право)
-    { l: 76, t: 74, w: 10, h: 7 },  { l: 88, t: 75, w: 9,  h: 7 },
-    { l: 79, t: 83, w: 9,  h: 7 },  { l: 90, t: 84, w: 7,  h: 6 },
-  ];
-
-  return (
-    <div className="relative w-full aspect-square rounded-xl mini-map overflow-hidden">
-      <div className="relative z-10"></div>
-      {/* Дома (низкий слой, только по углам) */}
-      <div className="absolute inset-0 z-0">
-        {BLOCKS.map((b, i) => (
-          <div
-            key={i}
-            className="city-block"
-            style={{
-              left: `${b.l}%`,
-              top: `${b.t}%`,
-              width: `${b.w}%`,
-              height: `${b.h}%`,
-            }}
-          />
-        ))}
-      </div>
-
-
-
-      {/* Дороги (выше домов) */}
-<div className="absolute inset-0 z-10">
-  {/* вертикальная и горизонтальная магистрали */}
-  <div className="absolute top-0 bottom-0 left-1/2 -translate-x-1/2 w-16 asphalt rounded-md" />
-  <div className="absolute left-0 right-0 top-1/2 -translate-y-1/2 h-16 asphalt rounded-md" />
-
-  {/* пунктир разметки */}
-  <div className="lane-dash" />
-</div>
-
-
-      {/* Машины (над дорогами) */}
-      <div className="absolute left-1/2 -translate-x-1/2 top-1 p-1 flex flex-col gap-1 items-center z-20">
-        {Array.from({ length: clamp(n, 0, 24) }).map((_, i) => (
-          <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm" />
-        ))}
-      </div>
-      <div className="absolute right-1 top-1/2 -translate-y-1/2 p-1 flex flex-row-reverse gap-1 items-center z-20">
-        {Array.from({ length: clamp(e, 0, 24) }).map((_, i) => (
-          <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm" />
-        ))}
-      </div>
-      <div className="absolute left-1/2 -translate-x-1/2 bottom-1 p-1 flex flex-col-reverse gap-1 items-center z-20">
-        {Array.from({ length: clamp(s, 0, 24) }).map((_, i) => (
-          <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm" />
-        ))}
-      </div>
-      <div className="absolute left-1 top-1/2 -translate-y-1/2 p-1 flex flex-row gap-1 items-center z-20">
-        {Array.from({ length: clamp(w, 0, 24) }).map((_, i) => (
-          <div key={i} className="w-8 h-3 bg-gray-700 rounded-sm" />
-        ))}
-        <div className="absolute left-1/2 -translate-x-1/2 top-1 p-1 flex flex-col gap-1 items-center z-30">...</div>
-<div className="absolute right-1 top-1/2 -translate-y-1/2 p-1 flex flex-row-reverse gap-1 items-center z-30">...</div>
-<div className="absolute left-1/2 -translate-x-1/2 bottom-1 p-1 flex flex-col-reverse gap-1 items-center z-30">...</div>
-<div className="absolute left-1 top-1/2 -translate-y-1/2 p-1 flex flex-row gap-1 items-center z-30">...</div>
-
-      </div>
 
   
 
+  // === Параметры сцены ===
+  const MAX_PER_LANE = 8;      // кап машин на полосе (держим FPS)
+  const ROAD_W = 16;           // ширина дороги в % (та же геометрия)
+  const LANE_GAP = 0.22;       // доля половины дороги между полосами (позиционный сдвиг)
+  const STOP_POS = 0.985;      // где «стоп‑линия» (относит. позиция в 0..1)
+  const CENTER_GAP = 6;        // ядро перекрёстка в % (не трогаем)
 
-      {/* Подписи */}
-      <div className="absolute inset-0 pointer-events-none z-30">
-        <div className="absolute top-2 left-2 text-[10px] bg-white/70 rounded px-1">Phase: {phase}</div>
-        <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[10px] bg-white/70 rounded px-1">North</div>
-        <div className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] bg-white/70 rounded px-1">East</div>
-        <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] bg-white/70 rounded px-1">South</div>
-        <div className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] bg-white/70 rounded px-1">West</div>
-      </div>
+  // плотная сетка домов по углам (как ранее)
+  const GRID = { rows: 3, cols: 4 };
+  const HOUSE = { w: [5.5, 8], h: [4.5, 7], padX: 1.6, padY: 1.6 };
+  const WINDOWS = { rows: 3, cols: 4, padX: 2, padY: 2, w: 6, h: 8, gapX: 6, gapY: 8 };
+
+  const PX = (v, size) => Math.round(v * size / 100);
+
+  const palette = theme === 'night'
+    ? {
+        bg:   '#0b1020',
+        asphalt: '#1f2533',
+        lane: 'rgba(255,255,255,0.55)',
+        laneInner: 'rgba(255,255,255,0.25)', // разделение двух полос
+        zebra: '#ffffff',
+        car: '#374151',
+        houseA: 'rgba(255,255,255,0.08)',
+        houseB: 'rgba(255,255,255,0.10)',
+        window: 'rgba(255,215,120,0.9)',
+        glow:   'rgba(255,215,120,0.35)',
+      }
+    : {
+        bg:   '#eef2f7',
+        asphalt: '#9aa3af',
+        lane: '#eaeef5',
+        laneInner: 'rgba(255,255,255,0.55)',
+        zebra: '#ffffff',
+        car: '#4b5563',
+        houseA: 'rgba(0,0,0,0.06)',
+        houseB: 'rgba(0,0,0,0.08)',
+        window: 'rgba(255,235,180,0.25)',
+        glow:   'rgba(255,235,180,0.07)',
+      };
+
+  const isGreen = React.useMemo(() => ({
+    N: phase === 'A',
+    S: phase === 'A',
+    E: phase === 'B',
+    W: phase === 'B',
+  }), [phase]);
+
+
+  // распределяем машины на 2 полосы (примерно поровну)
+  const syncCars = React.useCallback((dir, wantTotal) => {
+    const lanes = carsRef.current[dir];
+    const capTotal = Math.min(wantTotal, MAX_PER_LANE * 2);
+    const lane0Target = Math.floor(capTotal / 2);
+    const lane1Target = capTotal - lane0Target;
+
+    const ensure = (laneArr, target) => {
+      while (laneArr.length < target) {
+        laneArr.push({
+          pos: Math.random() * 0.9,                   // 0..1 вдоль дороги
+          speed: 0.12 + Math.random()*0.08,           // базовая скорость
+          jitter: (Math.random()-0.5) * 0.02,         // небольшой разброс
+        });
+      }
+      while (laneArr.length > target) laneArr.pop();
+    };
+
+    ensure(lanes[0], lane0Target);
+    ensure(lanes[1], lane1Target);
+  }, []);
+
+  React.useEffect(() => {
+    const [n,e,s,w] = counts.map(c => Math.max(0, Math.min(c, 24)));
+    syncCars('N', Math.round(n));
+    syncCars('E', Math.round(e));
+    syncCars('S', Math.round(s));
+    syncCars('W', Math.round(w));
+  }, [counts, syncCars]);
+
+  // --- План домов (кеш) ---
+  const housePlanRef = React.useRef(null);
+  const makeHousePlan = (width, height) => {
+    const QUADS = [
+      { x: 3, y: 3,   w: 28, h: 28 },  // NW
+      { x: 69, y: 3,  w: 28, h: 28 },  // NE
+      { x: 3, y: 69,  w: 28, h: 28 },  // SW
+      { x: 69, y: 69, w: 28, h: 28 },  // SE
+    ];
+    const pick = (a,b) => a + Math.random()*(b-a);
+    const plan = [];
+    QUADS.forEach((q, qi) => {
+      const cellW = q.w / GRID.cols;
+      const cellH = q.h / GRID.rows;
+      for (let r=0; r<GRID.rows; r++) {
+        for (let c=0; c<GRID.cols; c++) {
+          const dw = pick(HOUSE.w[0], HOUSE.w[1]);
+          const dh = pick(HOUSE.h[0], HOUSE.h[1]);
+          const cx = q.x + c * cellW + HOUSE.padX;
+          const cy = q.y + r * cellH + HOUSE.padY;
+          const cw = cellW - HOUSE.padX*2;
+          const ch = cellH - HOUSE.padY*2;
+          const x = cx + Math.max(0, (cw - dw)/2);
+          const y = cy + Math.max(0, (ch - dh)/2);
+          plan.push({
+            x, y, w: dw, h: dh,
+            tone: (qi + r + c) % 2 ? 'A' : 'B',
+            flickerSeed: Math.random() * Math.PI * 2,
+          });
+        }
+      }
+    });
+    return plan;
+  };
+
+  // перерисовка
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    const ctx = canvas?.getContext('2d', { alpha: false });
+    if (!ctx) return;
+
+    let width = canvas.clientWidth;
+    let height = canvas.clientHeight;
+
+    const fixSize = () => {
+      const dpr = window.devicePixelRatio || 1;
+      width  = canvas.clientWidth;
+      height = canvas.clientHeight;
+      canvas.width  = Math.floor(width * dpr);
+      canvas.height = Math.floor(height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      housePlanRef.current = makeHousePlan(width, height);
+    };
+    fixSize();
+    const onResize = () => fixSize();
+    window.addEventListener('resize', onResize);
+
+    const drawStatic = () => {
+      // фон
+      ctx.fillStyle = palette.bg;
+      ctx.fillRect(0, 0, width, height);
+
+      // дома
+      if (!housePlanRef.current) housePlanRef.current = makeHousePlan(width, height);
+      const houses = housePlanRef.current;
+      houses.forEach(b => {
+        ctx.fillStyle = b.tone === 'A' ? palette.houseA : palette.houseB;
+        ctx.fillRect(PX(b.x,width), PX(b.y,height), PX(b.w,width), PX(b.h,height));
+      });
+
+      // дороги
+      ctx.fillStyle = palette.asphalt;
+      // вертикальная
+      ctx.fillRect(PX(50 - ROAD_W/2, width), 0, PX(ROAD_W, width), height);
+      // горизонтальная
+      ctx.fillRect(0, PX(50 - ROAD_W/2, height), width, PX(ROAD_W, height));
+
+     
+
+      // центральная осевая (штрих)
+      ctx.strokeStyle = palette.lane;
+      ctx.lineWidth = 3;
+      ctx.setLineDash([10, 14]);
+      ctx.beginPath(); ctx.moveTo(PX(50, width), 0); ctx.lineTo(PX(50, width), height); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, PX(50, height)); ctx.lineTo(width, PX(50, height)); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // разделитель двух полос (тонкая пунктирная внутри каждой дороги)
+      ctx.strokeStyle = palette.laneInner;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 10]);
+      // внутри вертикальной
+      const vMidLeft  = PX(50 - ROAD_W/4, width);
+      const vMidRight = PX(50 + ROAD_W/4, width);
+      ctx.beginPath(); ctx.moveTo(vMidLeft, 0);  ctx.lineTo(vMidLeft, height);  ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(vMidRight, 0); ctx.lineTo(vMidRight, height); ctx.stroke();
+      // внутри горизонтальной
+      const hMidTop    = PX(50 - ROAD_W/4, height);
+      const hMidBottom = PX(50 + ROAD_W/4, height);
+      ctx.beginPath(); ctx.moveTo(0, hMidTop);    ctx.lineTo(width, hMidTop);    ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, hMidBottom); ctx.lineTo(width, hMidBottom); ctx.stroke();
+      ctx.setLineDash([]);
+    };
+
+    const drawWindows = (ts) => {
+      if (!housePlanRef.current) return;
+      const houses = housePlanRef.current;
+      const night = theme === 'night';
+      ctx.shadowColor = night ? palette.glow : 'transparent';
+      ctx.shadowBlur  = night ? 8 : 2;
+
+      houses.forEach((b) => {
+        const x = PX(b.x, width), y = PX(b.y, height);
+        const w = PX(b.w, width), h = PX(b.h, height);
+        const padX = WINDOWS.padX, padY = WINDOWS.padY;
+        const startX = x + padX, startY = y + padY;
+
+        for (let r=0; r<WINDOWS.rows; r++) {
+          for (let c=0; c<WINDOWS.cols; c++) {
+            const phase = b.flickerSeed + (r*0.6 + c*0.4);
+            const tw = night ? 0.75 + 0.25*Math.max(0, Math.sin(ts*0.001 + phase)) : 0.25;
+            const wx = startX + c*(WINDOWS.w + WINDOWS.gapX);
+            const wy = startY + r*(WINDOWS.h + WINDOWS.gapY);
+            if (wx + WINDOWS.w > x + w - padX || wy + WINDOWS.h > y + h - padY) continue;
+            ctx.fillStyle = palette.window.replace(/,0\.\d+\)/, `,${tw.toFixed(2)})`);
+            ctx.fillRect(wx, wy, WINDOWS.w, WINDOWS.h);
+          }
+        }
+      });
+
+      ctx.shadowBlur = 0;
+      ctx.shadowColor = 'transparent';
+    };
+
+    // обновление позиций машин
+    const updateLane = (arr, green, dt) => {
+      for (const car of arr) {
+        const v = (car.speed + car.jitter);
+        if (green) {
+          car.pos += v * dt * 0.001 * 0.42;
+          if (car.pos > 1.3) car.pos = -0.1;
+        } else {
+          if (car.pos < STOP_POS) {
+            car.pos = Math.min(STOP_POS, car.pos + v * dt * 0.001 * 0.28);
+          }
+        }
+      }
+    };
+
+    // отрисовка машин по двум полосам
+    const drawCars = () => {
+      ctx.fillStyle = palette.car;
+      const carW = 18, carH = 10;
+
+      // смещение полосы от центра своей половины дороги
+      // lane=0 — ближе к центру перекрёстка, lane=1 — внешняя
+      const laneShift = (lane, vertical=true) => {
+        const half = PX(ROAD_W/4, vertical ? width : height);
+        const shift = half * LANE_GAP;
+        return (lane === 0) ? -shift : +shift;
+      };
+
+      // N (вниз) — две полосы по левому/правому «рукаву» вертикальной
+      carsRef.current.N.forEach((arr, lane) => {
+        const baseX = PX(50 - ROAD_W/4, width); // центр левого рукава вертикальной
+        const x = baseX + laneShift(lane, true) - carW/2;
+        for (const car of arr) {
+          const y = PX(5 + car.pos * (45 - CENTER_GAP/2), height);
+          ctx.fillRect(x, y, carW, carH);
+        }
+      });
+
+      // S (вверх) — правый рукав вертикальной
+      carsRef.current.S.forEach((arr, lane) => {
+        const baseX = PX(50 + ROAD_W/4, width);
+        const x = baseX + laneShift(lane, true) - carW/2;
+        for (const car of arr) {
+          const y = PX(95 - car.pos * (45 - CENTER_GAP/2), height) - carH;
+          ctx.fillRect(x, y, carW, carH);
+        }
+      });
+
+      // E (вправо) — нижний рукав горизонтальной
+      carsRef.current.E.forEach((arr, lane) => {
+        const baseY = PX(50 + ROAD_W/4, height);
+        const y = baseY + laneShift(lane, false) - carH/2;
+        for (const car of arr) {
+          const x = PX(5 + car.pos * (45 - CENTER_GAP/2), width);
+          ctx.fillRect(x, y, carW, carH);
+        }
+      });
+
+      // W (влево) — верхний рукав горизонтальной
+      carsRef.current.W.forEach((arr, lane) => {
+        const baseY = PX(50 - ROAD_W/4, height);
+        const y = baseY + laneShift(lane, false) - carH/2;
+        for (const car of arr) {
+          const x = PX(95 - car.pos * (45 - CENTER_GAP/2), width) - carW;
+          ctx.fillRect(x, y, carW, carH);
+        }
+      });
+    };
+
+    const tick = (ts) => {
+      const dt = Math.min(50, ts - (lastTsRef.current || ts));
+      lastTsRef.current = ts;
+
+      drawStatic();
+      drawWindows(ts);
+
+      updateLane(carsRef.current.N[0], isGreen.N, dt);
+      updateLane(carsRef.current.N[1], isGreen.N, dt);
+      updateLane(carsRef.current.E[0], isGreen.E, dt);
+      updateLane(carsRef.current.E[1], isGreen.E, dt);
+      updateLane(carsRef.current.S[0], isGreen.S, dt);
+      updateLane(carsRef.current.S[1], isGreen.S, dt);
+      updateLane(carsRef.current.W[0], isGreen.W, dt);
+      updateLane(carsRef.current.W[1], isGreen.W, dt);
+
+      drawCars();
+      animRef.current = requestAnimationFrame(tick);
+    };
+
+    animRef.current = requestAnimationFrame(tick);
+    return () => {
+      cancelAnimationFrame(animRef.current);
+      window.removeEventListener('resize', onResize);
+    };
+  }, [theme, palette.bg, palette.asphalt, palette.lane, palette.laneInner, palette.houseA, palette.houseB, palette.zebra, palette.window, palette.glow, palette.car, isGreen]);
+
+  return (
+    <div className="relative w-full aspect-square rounded-xl overflow-hidden mini-map">
+      <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
+      {/* метки сторон */}
+      <div className="absolute top-2 left-2 text-[10px] bg-white/70 rounded px-1">Phase: {phase}</div>
+      <div className="absolute top-1 left-1/2 -translate-x-1/2 text-[10px] bg-white/70 rounded px-1">North</div>
+      <div className="absolute right-1 top-1/2 -translate-y-1/2 text-[10px] bg-white/70 rounded px-1">East</div>
+      <div className="absolute bottom-1 left-1/2 -translate-x-1/2 text-[10px] bg-white/70 rounded px-1">South</div>
+      <div className="absolute left-1 top-1/2 -translate-y-1/2 text-[10px] bg-white/70 rounded px-1">West</div>
     </div>
   );
 }
-
 
 
 
@@ -600,7 +841,8 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
             <p className="text-sm mt-2">Time left this phase: <strong>{secondsLeft}s</strong></p>
             <p className="text-xs text-gray-500">Target green (if next start): {greenDurationFromScore(score) / 1000}s</p>
             <div className="mt-4">
-              <IntersectionMini counts={counts} phase={phase} />
+              <IntersectionMini counts={counts} phase={phase} theme={theme} />
+
             </div>
           </div>
 
