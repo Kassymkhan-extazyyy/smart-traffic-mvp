@@ -13,6 +13,7 @@ const MIN_GREEN_MS = 7000;
 const MAX_GREEN_MS = 45000;
 const SAFETY_YELLOW_MS = 3000;
 const SEC_SAFETY = Math.ceil(SAFETY_YELLOW_MS / 1000);
+const PED_MS = 10000; // 10s на пешеходов
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function greenDurationFromScore(score) { const p = clamp(score, 0, 100) / 100; return Math.round(MIN_GREEN_MS + p * (MAX_GREEN_MS - MIN_GREEN_MS)); }
@@ -115,10 +116,11 @@ function Billboard({ id, dir, isGreen, secForDir }) {
 
 
 
-function IntersectionMini({ counts, phase, theme = 'day' }) {
+function IntersectionMini({ counts, phase, theme = 'day', running = false, onImpressions }) {
   const canvasRef = React.useRef(null);
   const animRef   = React.useRef(null);
   const lastTsRef = React.useRef(0);
+ 
 
   // === 2 полосы в каждую сторону ===
   // carsRef[dir][lane] -> массив машин, lane: 0 (внутренняя), 1 (внешняя)
@@ -182,25 +184,39 @@ function IntersectionMini({ counts, phase, theme = 'day' }) {
 
   // распределяем машины на 2 полосы (примерно поровну)
   const syncCars = React.useCallback((dir, wantTotal) => {
-    const lanes = carsRef.current[dir];
-    const capTotal = Math.min(wantTotal, MAX_PER_LANE * 2);
-    const lane0Target = Math.floor(capTotal / 2);
-    const lane1Target = capTotal - lane0Target;
+  const lanes = carsRef.current[dir];           // <-- ВАЖНО
+  const capTotal = Math.min(wantTotal, MAX_PER_LANE * 2);
+  const lane0Target = Math.floor(capTotal / 2);
+  const lane1Target = capTotal - lane0Target;
 
-    const ensure = (laneArr, target) => {
-      while (laneArr.length < target) {
-        laneArr.push({
-          pos: Math.random() * 0.9,                   // 0..1 вдоль дороги
-          speed: 0.12 + Math.random()*0.08,           // базовая скорость
-          jitter: (Math.random()-0.5) * 0.02,         // небольшой разброс
-        });
-      }
-      while (laneArr.length > target) laneArr.pop();
-    };
+  const ensure = (laneArr, target) => {
+    while (laneArr.length < target) {
+      laneArr.push({
+        pos: Math.random() * 0.9,
+        speed: 0.12 + Math.random() * 0.08,
+        jitter: (Math.random() - 0.5) * 0.02,
+        type: (() => {
+          const r = Math.random();
+          if (r < 0.10) return 'bus';
+          if (r < 0.25) return 'van';
+          return 'sedan';
+        })(),
+        color: (() => {
+          const day = ['#ef4444','#3b82f6','#22c55e','#f59e0b','#8b5cf6','#14b8a6','#64748b'];
+          const night = ['#fca5a5','#93c5fd','#86efac','#fde68a','#c4b5fd','#99f6e4','#94a3b8'];
+          const bank = (theme === 'night') ? night : day;
+          return bank[Math.floor(Math.random() * bank.length)];
+        })(),
+        braking: false,
+        blinkPhase: Math.random() * Math.PI * 2,
+      });
+    }
+    while (laneArr.length > target) laneArr.pop();
+  };
 
-    ensure(lanes[0], lane0Target);
-    ensure(lanes[1], lane1Target);
-  }, []);
+  ensure(lanes[0], lane0Target);
+  ensure(lanes[1], lane1Target);
+}, [theme]);
 
   React.useEffect(() => {
     const [n,e,s,w] = counts.map(c => Math.max(0, Math.min(c, 24)));
@@ -345,100 +361,262 @@ function IntersectionMini({ counts, phase, theme = 'day' }) {
     };
 
     // обновление позиций машин
-    const updateLane = (arr, green, dt) => {
-      for (const car of arr) {
-        const v = (car.speed + car.jitter);
-        if (green) {
-          car.pos += v * dt * 0.001 * 0.42;
-          if (car.pos > 1.3) car.pos = -0.1;
-        } else {
-          if (car.pos < STOP_POS) {
-            car.pos = Math.min(STOP_POS, car.pos + v * dt * 0.001 * 0.28);
-          }
-        }
+    // ⬅️ REPLACE старую версию ВНЕ tick:
+const updateLane = (arr, green, dt, dir, crossedRef) => {
+  if (!arr.length) return;
+  const minGap = 0.035;
+
+  arr.sort((a,b) => b.pos - a.pos);
+
+  let leaderPos = 999;
+  for (let i = 0; i < arr.length; i++) {
+    const car = arr[i];
+    const v = (car.speed + car.jitter);
+    car.braking = false;
+
+    const old = car.pos;
+
+    if (green) {
+      car.pos += v * dt * 0.001 * 0.42;
+      if (old < 1.0 && car.pos >= 1.0) {
+        // засчитываем показ (машина прошла «линию билборда»)
+        crossedRef.current[dir] = (crossedRef.current[dir] || 0) + 1;
       }
-    };
+      if (car.pos > 1.3) car.pos = -0.1;
+    } else {
+      if (car.pos < STOP_POS) {
+        car.pos = Math.min(STOP_POS, car.pos + v * dt * 0.001 * 0.28);
+      }
+    }
+
+    car.prevPos = old;
+
+    if (i === 0) {
+      leaderPos = car.pos;
+    } else {
+      const ahead = leaderPos;
+      if (ahead - car.pos < minGap) {
+        car.pos = ahead - minGap;
+        car.braking = true;
+      }
+      leaderPos = car.pos;
+    }
+
+    if (!green && Math.abs(car.pos - STOP_POS) < 0.002) {
+      car.braking = true;
+    }
+  }
+};
+
+    
 
     // отрисовка машин по двум полосам
-    const drawCars = () => {
-      ctx.fillStyle = palette.car;
-      const carW = 18, carH = 10;
+    // === Хелперы для отрисовки машин ===
+const roundRect = (ctx, x, y, w, h, r) => {
+  const rr = Math.min(r, w/2, h/2);
+  ctx.beginPath();
+  ctx.moveTo(x+rr, y);
+  ctx.arcTo(x+w, y,   x+w, y+h, rr);
+  ctx.arcTo(x+w, y+h, x,   y+h, rr);
+  ctx.arcTo(x,   y+h, x,   y,   rr);
+  ctx.arcTo(x,   y,   x+w, y,   rr);
+  ctx.closePath();
+};
 
-      // смещение полосы от центра своей половины дороги
-      // lane=0 — ближе к центру перекрёстка, lane=1 — внешняя
-      const laneShift = (lane, vertical=true) => {
-        const half = PX(ROAD_W/4, vertical ? width : height);
-        const shift = half * LANE_GAP;
-        return (lane === 0) ? -shift : +shift;
-      };
+const drawCar = ({ x, y, w, h, color, dir, night, braking, t }) => {
+  // тень
+  ctx.save();
+  ctx.globalAlpha = 0.15;
+  ctx.fillStyle = '#000';
+  roundRect(ctx, x+2, y+2, w, h, 3);
+  ctx.fill();
+  ctx.restore();
 
-      // N (вниз) — две полосы по левому/правому «рукаву» вертикальной
-      carsRef.current.N.forEach((arr, lane) => {
-        const baseX = PX(50 - ROAD_W/4, width); // центр левого рукава вертикальной
-        const x = baseX + laneShift(lane, true) - carW/2;
-        for (const car of arr) {
-          const y = PX(5 + car.pos * (45 - CENTER_GAP/2), height);
-          ctx.fillRect(x, y, carW, carH);
-        }
-      });
+  // корпус
+  ctx.save();
+  roundRect(ctx, x, y, w, h, 3);
+  ctx.fillStyle = color;
+  ctx.fill();
 
-      // S (вверх) — правый рукав вертикальной
-      carsRef.current.S.forEach((arr, lane) => {
-        const baseX = PX(50 + ROAD_W/4, width);
-        const x = baseX + laneShift(lane, true) - carW/2;
-        for (const car of arr) {
-          const y = PX(95 - car.pos * (45 - CENTER_GAP/2), height) - carH;
-          ctx.fillRect(x, y, carW, carH);
-        }
-      });
+  // окна
+  ctx.globalAlpha = 0.35;
+  ctx.fillStyle = '#111';
+  roundRect(ctx, x + w*0.15, y + h*0.15, w*0.7, h*0.3, 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
 
-      // E (вправо) — нижний рукав горизонтальной
-      carsRef.current.E.forEach((arr, lane) => {
-        const baseY = PX(50 + ROAD_W/4, height);
-        const y = baseY + laneShift(lane, false) - carH/2;
-        for (const car of arr) {
-          const x = PX(5 + car.pos * (45 - CENTER_GAP/2), width);
-          ctx.fillRect(x, y, carW, carH);
-        }
-      });
+  const head = night ? 'rgba(255,255,210,0.85)' : 'rgba(255,255,210,0.45)';
+  const tail = braking ? 'rgba(255,80,80,0.95)' : 'rgba(255,80,80,0.55)';
+  const blink = (Math.sin(t/900) > 0.4);
 
-      // W (влево) — верхний рукав горизонтальной
-      carsRef.current.W.forEach((arr, lane) => {
-        const baseY = PX(50 - ROAD_W/4, height);
-        const y = baseY + laneShift(lane, false) - carH/2;
-        for (const car of arr) {
-          const x = PX(95 - car.pos * (45 - CENTER_GAP/2), width) - carW;
-          ctx.fillRect(x, y, carW, carH);
-        }
-      });
-    };
+  ctx.save();
+  ctx.shadowBlur = night ? 10 : 6;
 
-    const tick = (ts) => {
-      const dt = Math.min(50, ts - (lastTsRef.current || ts));
-      lastTsRef.current = ts;
+  if (dir === 'N') {
+    ctx.shadowColor = head; ctx.fillStyle = head;
+    ctx.fillRect(x + 3, y + h - 2, 3, 2);
+    ctx.fillRect(x + w - 6, y + h - 2, 3, 2);
+    ctx.shadowColor = tail; ctx.fillStyle = tail;
+    ctx.fillRect(x + 3, y, 3, 2);
+    ctx.fillRect(x + w - 6, y, 3, 2);
+    if (blink) {
+      ctx.fillStyle = 'rgba(255,180,0,0.9)';
+      ctx.fillRect(x - 1, y + h - 2, 2, 2);
+      ctx.fillRect(x + w - 1, y + h - 2, 2, 2);
+    }
+  } else if (dir === 'S') {
+    ctx.shadowColor = head; ctx.fillStyle = head;
+    ctx.fillRect(x + 3, y, 3, 2);
+    ctx.fillRect(x + w - 6, y, 3, 2);
+    ctx.shadowColor = tail; ctx.fillStyle = tail;
+    ctx.fillRect(x + 3, y + h - 2, 3, 2);
+    ctx.fillRect(x + w - 6, y + h - 2, 3, 2);
+    if (blink) {
+      ctx.fillStyle = 'rgba(255,180,0,0.9)';
+      ctx.fillRect(x - 1, y, 2, 2);
+      ctx.fillRect(x + w - 1, y, 2, 2);
+    }
+  } else if (dir === 'E') {
+    ctx.shadowColor = head; ctx.fillStyle = head;
+    ctx.fillRect(x + w - 2, y + 2, 2, 3);
+    ctx.fillRect(x + w - 2, y + h - 5, 2, 3);
+    ctx.shadowColor = tail; ctx.fillStyle = tail;
+    ctx.fillRect(x, y + 2, 2, 3);
+    ctx.fillRect(x, y + h - 5, 2, 3);
+    if (blink) {
+      ctx.fillStyle = 'rgba(255,180,0,0.9)';
+      ctx.fillRect(x + w - 2, y - 1, 2, 2);
+      ctx.fillRect(x + w - 2, y + h - 1, 2, 2);
+    }
+  } else if (dir === 'W') {
+    ctx.shadowColor = head; ctx.fillStyle = head;
+    ctx.fillRect(x, y + 2, 2, 3);
+    ctx.fillRect(x, y + h - 5, 2, 3);
+    ctx.shadowColor = tail; ctx.fillStyle = tail;
+    ctx.fillRect(x + w - 2, y + 2, 2, 3);
+    ctx.fillRect(x + w - 2, y + h - 5, 2, 3);
+    if (blink) {
+      ctx.fillStyle = 'rgba(255,180,0,0.9)';
+      ctx.fillRect(x, y - 1, 2, 2);
+      ctx.fillRect(x, y + h - 1, 2, 2);
+    }
+  }
 
-      drawStatic();
-      drawWindows(ts);
+  ctx.restore();
+  ctx.restore();
+};
 
-      updateLane(carsRef.current.N[0], isGreen.N, dt);
-      updateLane(carsRef.current.N[1], isGreen.N, dt);
-      updateLane(carsRef.current.E[0], isGreen.E, dt);
-      updateLane(carsRef.current.E[1], isGreen.E, dt);
-      updateLane(carsRef.current.S[0], isGreen.S, dt);
-      updateLane(carsRef.current.S[1], isGreen.S, dt);
-      updateLane(carsRef.current.W[0], isGreen.W, dt);
-      updateLane(carsRef.current.W[1], isGreen.W, dt);
+// === НОВАЯ версия drawCars (вне tick!) ===
+const drawCars = (tsNow = performance.now()) => {
+  const night = theme === 'night';
 
-      drawCars();
-      animRef.current = requestAnimationFrame(tick);
-    };
+  const dims = {
+    sedan: { w: 18, h: 10 },
+    van:   { w: 20, h: 12 },
+    bus:   { w: 28, h: 12 },
+  };
 
-    animRef.current = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(animRef.current);
-      window.removeEventListener('resize', onResize);
-    };
-  }, [theme, palette.bg, palette.asphalt, palette.lane, palette.laneInner, palette.houseA, palette.houseB, palette.zebra, palette.window, palette.glow, palette.car, isGreen]);
+  const laneShift = (lane, vertical=true) => {
+    const half = PX(ROAD_W/4, vertical ? width : height);
+    const shift = half * LANE_GAP;
+    return (lane === 0) ? -shift : +shift;
+  };
+
+  // N (вниз)
+  carsRef.current.N.forEach((arr, lane) => {
+    const baseX = PX(50 - ROAD_W/4, width);
+    const xCenter = baseX + laneShift(lane, true);
+    arr.forEach((car) => {
+      const { w, h } = dims[car.type] || dims.sedan;
+      const y = PX(5 + car.pos * (45 - CENTER_GAP/2), height);
+      drawCar({ x: xCenter - w/2, y, w, h, color: car.color, dir: 'N', night, braking: car.braking, t: tsNow });
+    });
+  });
+
+  // S (вверх)
+  carsRef.current.S.forEach((arr, lane) => {
+    const baseX = PX(50 + ROAD_W/4, width);
+    const xCenter = baseX + laneShift(lane, true);
+    arr.forEach((car) => {
+      const { w, h } = dims[car.type] || dims.sedan;
+      const y = PX(95 - car.pos * (45 - CENTER_GAP/2), height) - h;
+      drawCar({ x: xCenter - w/2, y, w, h, color: car.color, dir: 'S', night, braking: car.braking, t: tsNow });
+    });
+  });
+
+  // E (вправо)
+  carsRef.current.E.forEach((arr, lane) => {
+    const baseY = PX(50 + ROAD_W/4, height);
+    const yCenter = baseY + laneShift(lane, false);
+    arr.forEach((car) => {
+      const { w, h } = dims[car.type] || dims.sedan;
+      const x = PX(5 + car.pos * (45 - CENTER_GAP/2), width);
+      drawCar({ x, y: yCenter - h/2, w, h, color: car.color, dir: 'E', night, braking: car.braking, t: tsNow });
+    });
+  });
+
+  // W (влево)
+  carsRef.current.W.forEach((arr, lane) => {
+    const baseY = PX(50 - ROAD_W/4, height);
+    const yCenter = baseY + laneShift(lane, false);
+    arr.forEach((car) => {
+      const { w, h } = dims[car.type] || dims.sedan;
+      const x = PX(95 - car.pos * (45 - CENTER_GAP/2), width) - w;
+      drawCar({ x, y: yCenter - h/2, w, h, color: car.color, dir: 'W', night, braking: car.braking, t: tsNow });
+    });
+  });
+};
+
+   const tick = (ts) => {
+  const dt = Math.min(50, ts - (lastTsRef.current || ts));
+  lastTsRef.current = ts;
+
+  drawStatic();
+  drawWindows(ts);
+
+  // счетчик переходов за линию показы (сбрасываем каждый кадр)
+  const crossedRef = { current: { North: 0, East: 0, South: 0, West: 0 } };
+
+  updateLane(carsRef.current.N[0], isGreen.N, dt, "North", crossedRef);
+  updateLane(carsRef.current.N[1], isGreen.N, dt, "North", crossedRef);
+  updateLane(carsRef.current.E[0], isGreen.E, dt, "East",  crossedRef);
+  updateLane(carsRef.current.E[1], isGreen.E, dt, "East",  crossedRef);
+  updateLane(carsRef.current.S[0], isGreen.S, dt, "South", crossedRef);
+  updateLane(carsRef.current.S[1], isGreen.S, dt, "South", crossedRef);
+  updateLane(carsRef.current.W[0], isGreen.W, dt, "West",  crossedRef);
+  updateLane(carsRef.current.W[1], isGreen.W, dt, "West",  crossedRef);
+
+  // сообщаем наверх, если были «показы»
+  const batch = crossedRef.current;
+  if (onImpressions && (batch.North || batch.East || batch.South || batch.West)) {
+    onImpressions(batch);
+  }
+
+  drawCars(ts);
+  animRef.current = requestAnimationFrame(tick);
+};
+
+const start = () => {
+  if (!running) {
+    drawStatic();
+    drawWindows(performance.now());
+    // хочешь видеть машины в паузе — раскомментируй:
+    // drawCars(performance.now());
+    return;
+  }
+  // первый кадр и в цикл
+  drawCars(performance.now());
+  animRef.current = requestAnimationFrame(tick);
+};
+
+start();
+
+return () => {
+  if (animRef.current) cancelAnimationFrame(animRef.current);
+  window.removeEventListener('resize', onResize);
+};
+  }, [theme, palette.bg, palette.asphalt, palette.lane, palette.laneInner, palette.houseA, phase, running , palette.houseB, palette.zebra, palette.window, palette.glow, palette.car, isGreen]);
+  
 
   return (
     <div className="relative w-full aspect-square rounded-xl overflow-hidden mini-map">
@@ -489,6 +667,238 @@ function MiniCross({ activeAxis, phase }) {
   );
 }
 
+// --- DROP-IN REPLACEMENT: безопасный провайдер трафика ---
+function useTrafficProvider({
+  mode,                // "mock" | "real"
+  bbox,                // {north,south,east,west}  — валидируем
+  uiTickMs = 3000,     // как часто «шевелить» UI (интерполяция/шум)
+  fetchMs  = 6000,     // как часто реально ходить в API
+  timeoutMs = 4000,    // таймаут на один сетевой запрос
+  cacheTtlMs = 60000,  // сколько держать кэш свежим (1 мин)
+  maxDaily = 2400,     // защитный лимит на день
+}) {
+  const [score, setScore] = React.useState(50);
+  const [loading, setLoading] = React.useState(mode === "real");
+  const [error, setError] = React.useState(null);
+  const [lastUpdated, setLastUpdated] = React.useState(null);
+  const [source, setSource] = React.useState(mode); // "mock" | "real" | "cache"
+
+  const fetchTimerRef = React.useRef(null);
+  const uiTimerRef    = React.useRef(null);
+  const inFlightRef   = React.useRef(null);
+  const backoffRef    = React.useRef(0); // эксп. бэкофф в реальном режиме
+  const quotaRef      = React.useRef({ count: 0, resetAt: nextMidnight() });
+  const scenariosLocked = mode === "real";
+
+  // ── Гард на SSR/тесты ────────────────────────────────────────────────────────
+  const isBrowser = typeof window !== "undefined";
+
+  // ── утилиты ─────────────────────────────────────────────────────────────────
+  function nextMidnight() {
+    const d = new Date();
+    d.setHours(24, 0, 0, 0);
+    return d.getTime();
+  }
+  function resetQuotaIfNewDay() {
+    const now = Date.now();
+    if (now >= quotaRef.current.resetAt) {
+      quotaRef.current = { count: 0, resetAt: nextMidnight() };
+    }
+  }
+  function incQuota() {
+    resetQuotaIfNewDay();
+    quotaRef.current.count += 1;
+  }
+  function quotaLeft() {
+    resetQuotaIfNewDay();
+    return Math.max(0, maxDaily - quotaRef.current.count);
+  }
+
+  function validBbox(b) {
+    if (!b) return false;
+    const ok = ["north","south","east","west"].every(k => typeof b[k] === "number");
+    if (!ok) return false;
+    return b.north > b.south && b.east > b.west;
+  }
+
+  const CACHE_KEY = "traffic:last";
+  function readCache() {
+    try {
+      const raw = localStorage.getItem(CACHE_KEY);
+      if (!raw) return null;
+      const { score, ts } = JSON.parse(raw);
+      if (!Number.isFinite(ts)) return null;
+      if (Date.now() - ts > cacheTtlMs) return null;
+      if (!Number.isFinite(score)) return null;
+      return { score, ts };
+    } catch { return null; }
+  }
+  function writeCache(val) {
+    try { localStorage.setItem(CACHE_KEY, JSON.stringify({ score: val, ts: Date.now() })); } catch {}
+  }
+
+  function jitter(n, amp = 2) {
+    return Math.max(0, Math.min(100, Math.round(n + (Math.random() - 0.5) * amp)));
+  }
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  // ── остановить таймеры/запросы ──────────────────────────────────────────────
+  function stopAll() {
+    if (fetchTimerRef.current) { clearTimeout(fetchTimerRef.current); fetchTimerRef.current = null; }
+    if (uiTimerRef.current) { clearInterval(uiTimerRef.current); uiTimerRef.current = null; }
+    if (inFlightRef.current) { inFlightRef.current.abort(); inFlightRef.current = null; }
+  }
+
+  // ── основной fetch c таймаутом, офлайном, квотой и бэкоффом ────────────────
+  async function fetchRealOnce() {
+    if (!isBrowser) return;
+    if (!validBbox(bbox)) throw new Error("Invalid bbox");
+    if (!navigator.onLine) throw new Error("offline");
+    if (quotaLeft() <= 0) throw new Error("quota_exceeded");
+
+    const ctrl = new AbortController();
+    inFlightRef.current = ctrl;
+    const to = setTimeout(() => ctrl.abort(), timeoutMs);
+
+    try {
+      const res = await fetch(`/api/traffic?bbox=${encodeURIComponent(JSON.stringify(bbox))}`, {
+        method: "GET",
+        headers: { "Accept": "application/json" },
+        signal: ctrl.signal,
+      });
+      if (!res.ok) throw new Error(`http_${res.status}`);
+      const json = await res.json();
+      const s = Math.max(0, Math.min(100, Number(json?.score ?? 50)));
+incQuota();
+backoffRef.current = 0;
+writeCache(s);
+setScore(s);
+setSource("real");
+setLastUpdated(Date.now());
+setError(null);
+// ДОБАВЬ СЮДА:
+setLoading(false);
+
+return s;
+
+    } finally {
+      clearTimeout(to);
+      inFlightRef.current = null;
+    }
+  }
+
+  // ── планировщик реальных запросов с эксп. бэкоффом ─────────────────────────
+  function scheduleRealFetch() {
+    const base = fetchMs;
+    const step = backoffRef.current;
+    // эксп. рост: base * 2^step, с джиттером ±10%
+    const delay = Math.round(base * Math.pow(2, step) * (0.9 + Math.random() * 0.2));
+    fetchTimerRef.current = setTimeout(async () => {
+      try {
+        await fetchRealOnce();
+      } catch (e) {
+        // fallback из кэша, безопасный фейл-опен
+        const cached = readCache();
+        if (cached) {
+          setScore(cached.score);
+          setSource("cache");
+          setLastUpdated(cached.ts);
+          setLoading(false);
+        } else {
+          setScore(s => jitter(s, 3)); // чтобы UI не «умирал»
+          setSource("cache");
+        }
+        // увеличить бэкофф, но ограничить, чтобы не «замолчать»
+        backoffRef.current = Math.min(backoffRef.current + 1, 5);
+        setError(String(e?.message || e));
+      } finally {
+        scheduleRealFetch(); // планируем следующий
+      }
+    }, delay);
+  }
+
+  // ── UI тики: плавная интерполяция/шум, пауза при скрытом табе ──────────────
+  function startUiTicker() {
+    if (uiTimerRef.current) clearInterval(uiTimerRef.current);
+    uiTimerRef.current = setInterval(() => {
+      if (document.hidden) return; // пауза в фоновом табе
+      setScore(s => {
+        if (mode === "real") {
+          // легкое сглаживание, чтобы графика «жила»
+          const target = readCache()?.score ?? s;
+          return Math.round(lerp(s, target, 0.15));
+        } else {
+          // mock — просто пульс с шумом
+          return jitter(s, 1.2);
+        }
+      });
+    }, uiTickMs);
+  }
+
+  // ── основной эффект ────────────────────────────────────────────────────────
+  React.useEffect(() => {
+    if (!isBrowser) return;
+
+    stopAll();
+    setLoading(mode === "real");
+    setError(null);
+    setSource(mode);
+    backoffRef.current = 0;
+
+    // при старте поднимем кэш, чтобы быстро показать что-то осмысленное
+    const cached = readCache();
+    if (cached) {
+      setScore(cached.score);
+      setSource("cache");
+      setLastUpdated(cached.ts);
+    }
+
+    // подписка на смену видимости — чтобы останавливать частые запросы в фоне
+    const onVis = () => {
+      if (document.hidden) return;
+      // При возвращении — мягко синхронизируемся
+      if (mode === "real") {
+        try { fetchRealOnce(); } catch {}
+      }
+    };
+    document.addEventListener("visibilitychange", onVis);
+
+    // режимы
+    if (mode === "mock") {
+      setLoading(false);
+      startUiTicker();
+      // реальных запросов нет
+    } else {
+      startUiTicker();
+      scheduleRealFetch();
+    }
+
+    return () => {
+      stopAll();
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [mode, fetchMs, uiTickMs, timeoutMs, cacheTtlMs,
+      bbox?.north, bbox?.south, bbox?.east, bbox?.west]);
+
+  return {
+    score,          // 0..100
+    loading,        // true — когда первый real-фетч ещё не вернул
+    error,          // строка или null
+    lastUpdated,    // ts
+    source,         // "mock" | "real" | "cache"
+    quota: {
+      used: quotaRef.current.count,
+      limit: maxDaily,
+      resetAt: quotaRef.current.resetAt,
+      left: quotaLeft(),
+    },
+  };
+}
+
+
+
+
 
 export default function App() {
   const [theme, setTheme] = useState("day");
@@ -503,6 +913,25 @@ export default function App() {
 const prevCountsRef = useRef([0, 0, 0, 0]);
 const [lastGreenDir, setLastGreenDir] = useState("A"); // "A" или "B"
   const tick = useTicker(running);
+  const [trafficMode, setTrafficMode] = useState("mock"); // "mock" | "real"
+// для реального режима можно хранить bbox выбранного района
+const scenariosLocked = trafficMode === "real"; // ← добавь это
+const [bbox] = useState({ north: 25.3, south: 25.1, east: 55.35, west: 55.23 });
+const getCPI = () => (pricing.model === "CPM" ? pricing.value / 1000 : pricing.value);
+const getCPM = () => (pricing.model === "CPM" ? pricing.value : pricing.value * 1000);
+const [ads, setAds] = useState([
+  { id: "ad1", text: "City Wi-Fi • Connected Everywhere", cls: "ad-g-blue",  cpm: 20 },
+  { id: "ad2", text: "Eco-Transit • Clean Mobility",      cls: "ad-g-green", cpm: 25 },
+  { id: "ad3", text: "Smart Energy • AI-Optimized",       cls: "ad-g-purple",cpm: 30 },
+  { id: "ad4", text: "BaQdarsham • Smarter Cities",       cls: "ad-g-cyan",  cpm: 35 },
+]);
+const { score: liveScore, loading: trafficLoading, error: trafficErr, source, quota } =
+  useTrafficProvider({ mode: trafficMode, bbox, uiTickMs: 3000, fetchMs: 8000 });
+  // УДАЛИТЬ из IntersectionMini:
+const pendingVehicularRef = useRef(null);
+
+
+
 
   // при старте — восстановить
 useEffect(() => {
@@ -533,40 +962,69 @@ useEffect(() => {
   });
 }, [tick, running, phase]);
 
+// 4 билборда: North, East, South, West
+const [adStats, setAdStats] = useState({
+  North: { impressions: 0, cost: 0 },  // cost — сколько потрачено на текущий креатив (опционально)
+  East:  { impressions: 0, cost: 0 },
+  South: { impressions: 0, cost: 0 },
+  West:  { impressions: 0, cost: 0 },
+});
 
-  const score = useMemo(() => scenario.timeline[clamp(index, 0, scenario.timeline.length - 1)], [index, scenario]);
-  const msLeft = Math.max(0, phaseEndAt - Date.now());
-  const secondsLeft = Math.ceil(msLeft / 1000);
-  const baseCars = Math.round(score / 5);
+// цена за 1000 показов (CPM) или за 1 показ (CPI) — выбери модель.
+// Пример: CPM = $4.00
+const [pricing, setPricing] = useState({ model: "CPM", value: 20 });
+
+
+
+  // mock-score как было
+const mockScore = useMemo(
+  () => scenario.timeline[clamp(index, 0, scenario.timeline.length - 1)],
+  [index, scenario]
+);
+
+// ✅ Дефолт и защита для real
+const scoreRaw = trafficMode === "mock"
+  ? mockScore
+  : (liveScore ?? 50); // если liveScore undefined → 50
+
+const score = Number.isFinite(scoreRaw) ? scoreRaw : 50; // если NaN → 50
+
+
+const msLeft = Math.max(0, phaseEndAt - Date.now());
+const secondsLeft = Math.ceil(msLeft / 1000);
+
+// 1) базовое число машин из score
+const baseCars = Math.round(score / 5);
+
+// 2) множитель сценария — ТОЛЬКО в mock
 const scenarioFactor =
-  scenario.id === "free"       ? 0.9 :
-  scenario.id === "congestion" ? 2.0 :
-  /* incident */                 1.6;
-const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80); // до 80 машин суммарно
-const baseCounts = useMemo(() => distributeCars(totalCars, phase), [totalCars, phase]); // [N,E,S,W]
+  trafficMode === "real" ? 1.0 :
+  (scenario.id === "free"       ? 0.9 :
+   scenario.id === "congestion" ? 2.0 :
+   /* incident */                 1.6);
 
-// усиливаем очередь на стороне инцидента (если выбран)
+// 3) общий объём машин
+const totalCars = clamp(Math.round(baseCars * scenarioFactor), 0, 80);
+
+// 4) распределение по направлениям (одинаково и для real, и для mock)
+const baseCounts = useMemo(() => distributeCars(totalCars, phase), [totalCars, phase]);
+
+// 5) инцидент-буст — ТОЛЬКО в mock
 const counts = useMemo(() => {
+  if (trafficMode === "real") return baseCounts;
+
   if (scenario.id !== "incident" || !incidentSide) return baseCounts;
   const idxMap = { N: 0, E: 1, S: 2, W: 3 };
   const idx = idxMap[incidentSide] ?? null;
   if (idx === null) return baseCounts.slice();
 
   const boosted = baseCounts.slice();
-  // добавим «пробку» на стороне инцидента: +35% от суммарных машин, но с ограничением
   boosted[idx] = clamp(boosted[idx] + Math.ceil(totalCars * 0.35), 0, 24);
-
-  // по желанию — слегка «снять» с противоположной стороны, чтобы суммарно смотрелось реалистично
   const opposite = (idx + 2) % 4;
   boosted[opposite] = clamp(boosted[opposite] - Math.ceil(totalCars * 0.10), 0, 24);
-
   return boosted;
-}, [baseCounts, scenario.id, incidentSide, totalCars]);
-  // live‑сообщение «мозга»
-const infoMessage = computeMessage(score, phase, activeDir, scenario.id, secondsLeft);
-  useEffect(() => {
-  prevCountsRef.current = counts;
-}, [counts]);
+}, [trafficMode, baseCounts, scenario.id, incidentSide, totalCars]);
+
 
 
   useEffect(() => {
@@ -590,6 +1048,7 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
     const outflowNS = lastGreenDir === "A" && prevNS > curNS;
     const outflowEW = lastGreenDir === "B" && prevEW > curEW;
     
+    
 
     const payload = {
       counts: { N: counts[0], E: counts[1], S: counts[2], W: counts[3] },
@@ -599,32 +1058,52 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
       outflowNS,
       outflowEW,
       incidentSide
+      
     };
+
+    
 
     getModelDecision(payload)
       .then(({ nextDir, greenMs }) => {
-        const bounded = clamp(
-          greenMs ?? greenDurationFromScore(score),
-          MIN_GREEN_MS,
-          MAX_GREEN_MS
-        );
-        const dir = nextDir === "A" || nextDir === "B"
-          ? nextDir
-          : (activeDir === "A" ? "B" : "A");
-        setActiveDir(dir);
-        setLastGreenDir(dir);
-        setPhase(dir);
-        setPhaseEndAt(Date.now() + bounded);
-      })
-      .catch(() => {
-        const fallback = greenDurationFromScore(score);
-        const dir = activeDir === "A" ? "B" : "A";
-        setActiveDir(dir);
-        setPhase(dir);
-        setPhaseEndAt(Date.now() + fallback);
-      });
+  const bounded = clamp(
+    greenMs ?? greenDurationFromScore(score),
+    MIN_GREEN_MS,
+    MAX_GREEN_MS
+  );
+  const dir = nextDir === "A" || nextDir === "B"
+    ? nextDir
+    : (activeDir === "A" ? "B" : "A");
+
+  // Сохраняем, какой авто-зелёный нужен после пешеходов
+  pendingVehicularRef.current = { dir, duration: bounded };
+
+  // ВСТАВЛЯЕМ пешеходную фазу ПЕРЕД авто:
+  // если следующий будет "A" (NS зелёный), пешеходам даём "PED_B" (перейти NS-зебру)
+  // если следующий будет "B" (EW зелёный), пешеходам даём "PED_A" (перейти EW-зебру)
+  const pedPhase = dir === "A" ? "PED_B" : "PED_A";
+  setPhase(pedPhase);
+  setPhaseEndAt(Date.now() + PED_MS);
+  setActiveDir(dir);       // заранее сохраним, чтобы UI понимал, какой авто-направление готовится
+  setLastGreenDir(dir);    // обновим lastGreenDir тоже заранее
+})
   }
 }
+else if (phase === "PED_A" || phase === "PED_B") {
+  // пешеходная фаза закончилась — включаем тот авто-зелёный, который отложили
+  const pending = pendingVehicularRef.current;
+  if (pending) {
+    setPhase(pending.dir);
+    setPhaseEndAt(Date.now() + pending.duration);
+    // очищаем
+    pendingVehicularRef.current = null;
+  } else {
+    // на случай, если не успели записать (fallback)
+    const dir = activeDir === "A" ? "B" : "A";
+    setPhase(dir);
+    setPhaseEndAt(Date.now() + greenDurationFromScore(score));
+  }
+}
+
 
 
 
@@ -675,31 +1154,25 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
 
 
         <div className="flex flex-wrap items-center gap-2">
-          {SCENARIOS.map((s) => {
-  const active = scenario.id === s.id;
-  return (
-    <button
-      key={s.id}
-      onClick={() => setScenario(s)}
-      aria-pressed={active}
-      className={`relative px-4 py-2 rounded-full font-medium border
-        transition duration-200 ease-out
-        focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2
-        ${active
-          ? "bg-black text-white shadow-lg ring-1 ring-black/30 hover:shadow-xl active:scale-[0.98]"
-          : "bg-white text-gray-800 shadow hover:shadow-md active:scale-95"}
-      `}
-    >
-      <span className="pointer-events-none">{s.name}</span>
-      {/* мягкое «свечение» для активной */}
-      <span
-        className={`absolute inset-0 rounded-full transition-opacity
-          ${active ? "opacity-20" : "opacity-0"} bg-white`}
-        aria-hidden="true"
-      />
-    </button>
-  );
-})}
+  {SCENARIOS.map((s) => {
+    const active = scenario.id === s.id;
+    return (
+      <button
+        key={s.id}
+        onClick={() => { if (!scenariosLocked) setScenario(s); }}
+        disabled={scenariosLocked}
+        aria-pressed={active}
+        className={`relative px-4 py-2 rounded-full font-medium border
+          ${active ? "bg-black text-white" : "bg-white text-gray-800"}
+          ${scenariosLocked
+            ? "opacity-50 cursor-not-allowed pointer-events-none"
+            : "hover:shadow-md active:scale-95"}
+        `}
+      >
+        <span className="pointer-events-none">{s.name}</span>
+      </button>
+    );
+  })}
 
           <div className="hidden md:block h-6 w-px bg-gray-300 mx-1" />
 
@@ -753,6 +1226,25 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
   </button>
 </div>
 
+<div className="flex items-center gap-2">
+  <button
+    onClick={() => setTrafficMode("mock")}
+    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${trafficMode==="mock" ? "bg-black text-white" : "bg-white text-gray-700"}`}
+  >
+    Mock traffic
+  </button>
+  <button
+    onClick={() => setTrafficMode("real")}
+    className={`px-3 py-1.5 rounded-lg text-xs font-semibold border ${trafficMode==="real" ? "bg-black text-white" : "bg-white text-gray-700"}`}
+  >
+    Real traffic
+  </button>
+  {trafficMode==="real" && <span className="text-xs text-gray-500">{trafficLoading ? "loading…" : "live ✓"}</span>}
+</div>
+
+
+
+
 
 {/* Incident side picker */}
 {scenario.id === "incident" && (
@@ -781,9 +1273,7 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
 )}
         </div>
       </div>
-    </div>
-
-    
+    </div>    
   </div>
 </div>
 
@@ -841,7 +1331,29 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
             <p className="text-sm mt-2">Time left this phase: <strong>{secondsLeft}s</strong></p>
             <p className="text-xs text-gray-500">Target green (if next start): {greenDurationFromScore(score) / 1000}s</p>
             <div className="mt-4">
-              <IntersectionMini counts={counts} phase={phase} theme={theme} />
+              <IntersectionMini
+  counts={counts}
+  phase={phase}
+  theme={theme}
+  running={running}
+  onImpressions={(batch) => {
+ // batch: { North?: number, East?: number, South?: number, West?: number }
+if (!batch) return;
+setAdStats((prev) => {
+  const next = { ...prev };
+  ["North", "East", "South", "West"].forEach((dir) => {
+    const add = (batch && batch[dir]) != null ? batch[dir] : 0;
+    if (add > 0) {
+      next[dir] = {
+        impressions: next[dir].impressions + add,
+        cost: next[dir].cost + add * getCPI(),
+      };
+    }
+  });
+  return next;
+});
+  }}
+/>
 
             </div>
           </div>
@@ -853,6 +1365,15 @@ const infoMessage = computeMessage(score, phase, activeDir, scenario.id, seconds
               <li>Scenario length: {Math.round(scenario.timeline.length * TICK_MS / 1000)} s</li>
               <li>Green bounds: {Math.round(MIN_GREEN_MS/1000)}–{Math.round(MAX_GREEN_MS/1000)} s</li>
               <li>Total cars (sim): {totalCars} (N:{counts[0]}, E:{counts[1]}, S:{counts[2]}, W:{counts[3]})</li>
+<li className="mt-2 font-semibold">Ad Impressions:</li>
+<li>North: {adStats.North.impressions} (≈ ${adStats.North.cost.toFixed(2)})</li>
+<li>East:  {adStats.East.impressions}  (≈ ${adStats.East.cost.toFixed(2)})</li>
+<li>South: {adStats.South.impressions} (≈ ${adStats.South.cost.toFixed(2)})</li>
+<li>West:  {adStats.West.impressions}  (≈ ${adStats.West.cost.toFixed(2)})</li>
+<li className="text-xs text-gray-500">
+  Pricing: {pricing.model} = ${pricing.value} → CPM ${getCPM().toFixed(2)}, CPI ${getCPI().toFixed(4)}
+</li>
+        
             </ul>
           </div>
         </div>
