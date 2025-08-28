@@ -899,7 +899,7 @@ return s;
 
 
 
-
+import Tutorial, { wasTutorialSeen } from "./components/Tutorial.jsx";
 export default function App() {
   const [theme, setTheme] = useState("day");
   const [incidentSide, setIncidentSide] = useState(null); // "N" | "E" | "S" | "W" | null
@@ -925,6 +925,12 @@ const [ads, setAds] = useState([
   { id: "ad3", text: "Smart Energy • AI-Optimized",       cls: "ad-g-purple",cpm: 30 },
   { id: "ad4", text: "BaQdarsham • Smarter Cities",       cls: "ad-g-cyan",  cpm: 35 },
 ]);
+// === Tutorial state ===
+const [tutorialOpen, setTutorialOpen] = useState(false);
+useEffect(() => {
+  // открываем только при первом заходе
+  if (!wasTutorialSeen()) setTutorialOpen(true);
+}, []);
 const { score: liveScore, loading: trafficLoading, error: trafficErr, source, quota } =
   useTrafficProvider({ mode: trafficMode, bbox, uiTickMs: 3000, fetchMs: 8000 });
   // УДАЛИТЬ из IntersectionMini:
@@ -1242,6 +1248,15 @@ else if (phase === "PED_A" || phase === "PED_B") {
   {trafficMode==="real" && <span className="text-xs text-gray-500">{trafficLoading ? "loading…" : "live ✓"}</span>}
 </div>
 
+<button
+  onClick={() => setTutorialOpen(true)}
+  className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white"
+  title="Показать краткий гайд"
+>
+  Помощь
+</button>
+
+
 
 
 
@@ -1378,6 +1393,9 @@ setAdStats((prev) => {
           </div>
         </div>
       </div>
+
+      {/* Tutorial modal */}
+<Tutorial open={tutorialOpen} onClose={() => setTutorialOpen(false)} />
     </div>
   );
 }
