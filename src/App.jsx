@@ -11,9 +11,7 @@ const SCENARIOS = [
 const TICK_MS = 100;
 const MIN_GREEN_MS = 7000;
 const MAX_GREEN_MS = 45000;
-const SAFETY_YELLOW_MS = 3000;
-const SEC_SAFETY = Math.ceil(SAFETY_YELLOW_MS / 1000);
-const PED_MS = 10000; // 10s на пешеходов
+const PED_MS = 10000;
 
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function greenDurationFromScore(score) { const p = clamp(score, 0, 100) / 100; return Math.round(MIN_GREEN_MS + p * (MAX_GREEN_MS - MIN_GREEN_MS)); }
@@ -896,6 +894,43 @@ return s;
   };
 }
 
+// === ЛОКАЛЬНЫЙ РЕШАТЕЛЬ (без ИИ) ===
+function decideNextPhaseLocally({ counts, waits, lastGreenDir }) {
+  // веса: очередь важнее, но учитываем и накопленное ожидание
+  const wQ = 1.0;     // вес очереди
+  const wW = 0.6;     // вес ожидания (борьба с «обделёнными» направлениями)
+
+  const scoreNS = wQ * (counts.N + counts.S) + wW * (waits.N + waits.S);
+  const scoreEW = wQ * (counts.E + counts.W) + wW * (waits.E + waits.W);
+
+  // «справедливость»: если ось давно не получала зелёный — слегка бустим её
+  const fairnessBoost = 5;
+  const last = (lastGreenDir === "A") ? "A" : "B";
+  const other = (last === "A") ? "B" : "A";
+
+  let nextDir = scoreNS >= scoreEW ? "A" : "B";
+  // если разница невелика — переключаемся на «другую» ось для равенства
+  if (Math.abs(scoreNS - scoreEW) < 3) nextDir = other;
+
+  // базовая длительность от «нагруженности» будущей оси
+  const loadNext = (nextDir === "A")
+    ? (counts.N + counts.S)
+    : (counts.E + counts.W);
+
+  // нормируем к 0..100 (у вас score ≈ 0..100, но здесь исходник — количество машин в очереди)
+  const approxScore = Math.max(0, Math.min(100, Math.round(loadNext * 4)));
+  const greenMsBase = greenDurationFromScore(approxScore);
+
+  // легкая коррекция длительности от ожидания на выбранной оси
+  const waitsNext = (nextDir === "A") ? (waits.N + waits.S) : (waits.E + waits.W);
+  const bonus = Math.min(6000, waitsNext * 60); // до +6 сек за «страдания»
+  const greenMs = clamp(greenMsBase + bonus, MIN_GREEN_MS, MAX_GREEN_MS);
+
+  const reason = `local: NS=${scoreNS.toFixed(1)} EW=${scoreEW.toFixed(1)} last=${last} → ${nextDir} @ ${Math.round(greenMs/1000)}s`;
+  return { nextDir, greenMs, reason };
+}
+
+
 
 
 
@@ -906,7 +941,8 @@ export default function App() {
   const [scenario, setScenario] = useState(SCENARIOS[0]);
   const [running, setRunning] = useState(false);
   const [index, setIndex] = useState(0);
-  const [phase, setPhase] = useState("A"); // "A" | "B" | "YELLOW"
+  const [phase, setPhase] = useState("A"); // "A" | "B" | "PED"
+  const pendingVehicularRef = useRef(null); // что включим после PED
   const [phaseEndAt, setPhaseEndAt] = useState(Date.now() + MIN_GREEN_MS);
   const [activeDir, setActiveDir] = useState("A");
   const [waitSec, setWaitSec] = useState([0, 0, 0, 0]); // N,E,S,W в секундах
@@ -934,7 +970,6 @@ useEffect(() => {
 const { score: liveScore, loading: trafficLoading, error: trafficErr, source, quota } =
   useTrafficProvider({ mode: trafficMode, bbox, uiTickMs: 3000, fetchMs: 8000 });
   // УДАЛИТЬ из IntersectionMini:
-const pendingVehicularRef = useRef(null);
 
 
 
@@ -1034,95 +1069,71 @@ const counts = useMemo(() => {
 
 
   useEffect(() => {
-    if (!running) return;
-    if (Date.now() >= phaseEndAt) {
-  if (phase === "A") {
-    setPhase("YELLOW");
-    setPhaseEndAt(Date.now() + SAFETY_YELLOW_MS);
+  if (!running) return;
 
-  } else if (phase === "B") {
-    setPhase("YELLOW");
-    setPhaseEndAt(Date.now() + SAFETY_YELLOW_MS);
+  // Накапливаем ожидание: на зелёном — 0, на красном — растёт. На PED все красные.
+  setWaitSec(prev => {
+    const green = phase === "A" ? [true,false,true,false]
+                : phase === "B" ? [false,true,false,true]
+                :                  [false,false,false,false]; // PED
+    const next = [...prev];
+    for (let i = 0; i < 4; i++) next[i] = green[i] ? 0 : Math.min(prev[i] + Math.ceil(TICK_MS/1000), 3600);
+    return next;
+  });
 
-  } else if (phase === "YELLOW") {
-    // === решаем куда включать зелёный ===
-    const prev = prevCountsRef.current;
-    const curNS = counts[0] + counts[2];
-    const curEW = counts[1] + counts[3];
-    const prevNS = prev[0] + prev[2];
-    const prevEW = prev[1] + prev[3];
-    const outflowNS = lastGreenDir === "A" && prevNS > curNS;
-    const outflowEW = lastGreenDir === "B" && prevEW > curEW;
-    
-    
+  if (Date.now() >= phaseEndAt) {
+    // обновим «прошлые» counts для корректной аналитики outflow
+    prevCountsRef.current = counts;
 
-    const payload = {
-      counts: { N: counts[0], E: counts[1], S: counts[2], W: counts[3] },
-      waits:  { N: waitSec[0], E: waitSec[1], S: waitSec[2], W: waitSec[3] },
-      scenarioId: scenario.id,
-      lastGreenDir,
-      outflowNS,
-      outflowEW,
-      incidentSide
-      
-    };
+    if (phase === "A" || phase === "B") {
+      // Входим в PED и ПАРАЛЛЕЛЬНО заранее решаем следующий авто-зелёный
+      const payload = {
+        counts: { N: counts[0], E: counts[1], S: counts[2], W: counts[3] },
+        waits:  { N: waitSec[0], E: waitSec[1], S: waitSec[2], W: waitSec[3] },
+        scenarioId: scenario.id,
+        lastGreenDir,
+        // опционально: outflowNS/EW, incidentSide — если используешь
+      };
 
-    
+      const local = decideNextPhaseLocally(payload);
 
-    getModelDecision(payload)
-      .then(({ nextDir, greenMs }) => {
-  const bounded = clamp(
-    greenMs ?? greenDurationFromScore(score),
-    MIN_GREEN_MS,
-    MAX_GREEN_MS
-  );
-  const dir = nextDir === "A" || nextDir === "B"
-    ? nextDir
-    : (activeDir === "A" ? "B" : "A");
+getModelDecision(payload)
+  .then(({ nextDir, greenMs }) => {
+    const dir = (nextDir === "A" || nextDir === "B") ? nextDir : local.nextDir;
+    const dur = clamp(greenMs ?? local.greenMs, MIN_GREEN_MS, MAX_GREEN_MS);
+    pendingVehicularRef.current = { dir, dur };
+  })
+  .catch(() => {
+    pendingVehicularRef.current = { dir: local.nextDir, dur: local.greenMs };
+  });
 
-  // Сохраняем, какой авто-зелёный нужен после пешеходов
-  pendingVehicularRef.current = { dir, duration: bounded };
+setPhase("PED");
+setPhaseEndAt(Date.now() + PED_MS);
 
-  // ВСТАВЛЯЕМ пешеходную фазу ПЕРЕД авто:
-  // если следующий будет "A" (NS зелёный), пешеходам даём "PED_B" (перейти NS-зебру)
-  // если следующий будет "B" (EW зелёный), пешеходам даём "PED_A" (перейти EW-зебру)
-  const pedPhase = dir === "A" ? "PED_B" : "PED_A";
-  setPhase(pedPhase);
-  setPhaseEndAt(Date.now() + PED_MS);
-  setActiveDir(dir);       // заранее сохраним, чтобы UI понимал, какой авто-направление готовится
-  setLastGreenDir(dir);    // обновим lastGreenDir тоже заранее
-})
+    } else if (phase === "PED") {
+      // Закончилась пешеходная пауза — включаем отложенный авто-зелёный
+      const pending = pendingVehicularRef.current;
+      const dir = pending?.dir ?? (lastGreenDir === "A" ? "B" : "A");
+      const dur = pending?.dur ?? greenDurationFromScore(score);
+
+      setPhase(dir);
+      setActiveDir(dir);
+      setLastGreenDir(dir);
+      setPhaseEndAt(Date.now() + dur);
+      pendingVehicularRef.current = null;
+    }
   }
-}
-else if (phase === "PED_A" || phase === "PED_B") {
-  // пешеходная фаза закончилась — включаем тот авто-зелёный, который отложили
-  const pending = pendingVehicularRef.current;
-  if (pending) {
-    setPhase(pending.dir);
-    setPhaseEndAt(Date.now() + pending.duration);
-    // очищаем
-    pendingVehicularRef.current = null;
-  } else {
-    // на случай, если не успели записать (fallback)
-    const dir = activeDir === "A" ? "B" : "A";
-    setPhase(dir);
-    setPhaseEndAt(Date.now() + greenDurationFromScore(score));
-  }
-}
 
+  setIndex(i => (i + 1) % scenario.timeline.length);
+}, [tick, running, phase, phaseEndAt, counts, waitSec, scenario.id, lastGreenDir, score]);
 
-
-
-
-    setIndex((i) => (i + 1) % scenario.timeline.length);
-  }, [tick, running, phase, activeDir, score]);
 
   const dirs = ["North", "East", "South", "West"];
   const isGreenMap = phase === "A"
   ? { North: true, South: true, East: false, West: false }
   : phase === "B"
   ? { North: false, South: false, East: true, West: true }
-  : { North: false, East: false, South: false, West: false };
+  : { North: false, South: false, East: false, West: false }; // PED
   
 
 
@@ -1138,7 +1149,7 @@ else if (phase === "PED_A" || phase === "PED_B") {
         {/* Логотип + текст */}
     <div className="flex items-center gap-3">
   <img src="/logo.png" alt="Logo" className="h-12 w-auto rounded-full shadow" />
-  <h1 className="text-2xl font-bold">Smart Billboard – MVP (Simulation)</h1>
+  <h1 className="text-2xl font-bold">BaQdarsham – MVP (Simulation)</h1>
 
 
 
@@ -1300,7 +1311,7 @@ else if (phase === "PED_A" || phase === "PED_B") {
     const isGreen = isGreenMap[dir];
     // если зелёный — показываем оставшиеся секунды,
     // если красный — примерное время до зелёного (конец текущей фазы + safety)
-    const secForDir = isGreen ? secondsLeft : (secondsLeft + SEC_SAFETY);
+    const secForDir = secondsLeft;
 
     return (
       <div key={dir} className="flex items-stretch gap-2">
@@ -1323,24 +1334,26 @@ else if (phase === "PED_A" || phase === "PED_B") {
     : null}
 </p>
 
-            <p className="text-sm">Active direction: <strong>{activeDir}</strong> | Phase: <strong>{phase}</strong></p>
             <div className="flex items-center gap-6 mt-3">
-  {/* Вертикальная ось (A) */}
+  {/* A: North/South */}
   <div className="flex flex-col items-center gap-1">
     <div className={`w-10 h-10 rounded-full border-2 border-black ${phase==="A" ? "bg-green-500 shadow-[0_0_10px_3px_rgba(34,197,94,0.7)]" : "bg-gray-700"}`} />
     <span className="text-xs text-gray-600">North/South</span>
   </div>
-  {/* Горизонтальная ось (B) */}
+
+  {/* B: East/West */}
   <div className="flex flex-col items-center gap-1">
     <div className={`w-10 h-10 rounded-full border-2 border-black ${phase==="B" ? "bg-green-500 shadow-[0_0_10px_3px_rgba(34,197,94,0.7)]" : "bg-gray-700"}`} />
     <span className="text-xs text-gray-600">East/West</span>
   </div>
-  {/* Safety */}
+
+  {/* PED: пешеходная пауза */}
   <div className="flex flex-col items-center gap-1">
-    <div className={`w-10 h-10 rounded-full border-2 border-black ${phase==="YELLOW" ? "bg-yellow-400 shadow-[0_0_10px_3px_rgba(250,204,21,0.7)]" : "bg-gray-700"}`} />
-    <span className="text-xs text-gray-600">Yellow</span>
+    <div className={`w-10 h-10 rounded-full border-2 border-black ${phase==="PED" ? "bg-yellow-400 shadow-[0_0_10px_3px_rgba(250,204,21,0.7)]" : "bg-gray-700"}`} />
+    <span className="text-xs text-gray-600">Pedestrians</span>
   </div>
 </div>
+
 
 
             <p className="text-sm mt-2">Time left this phase: <strong>{secondsLeft}s</strong></p>
