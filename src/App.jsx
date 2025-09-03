@@ -13,6 +13,53 @@ const MIN_GREEN_MS = 7000;
 const MAX_GREEN_MS = 45000;
 const PED_MS = 10000;
 
+// ====== LOGGING HELPERS ======
+const LOG_KEY = "decisions";
+const LOG_CAP = 300_000; // мягкий лимит для localStorage, можно менять
+
+function _readLogs() {
+  try { return JSON.parse(localStorage.getItem(LOG_KEY) || "[]"); } catch { return []; }
+}
+function _writeLogs(arr) {
+  try { localStorage.setItem(LOG_KEY, JSON.stringify(arr)); } catch (e) { console.error("log write failed:", e); }
+}
+function getLogsCount() {
+  return _readLogs().length;
+}
+function getRecentLogs(n = 20) {
+  const all = _readLogs();
+  return all.slice(Math.max(0, all.length - n));
+}
+function exportLogsToFile(filename = "decisions.json") {
+  const blob = new Blob([JSON.stringify(_readLogs(), null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+}
+function clearLogs() {
+  localStorage.removeItem(LOG_KEY);
+  window.dispatchEvent(new CustomEvent("logs:updated", { detail: { total: 0 } }));
+}
+
+/** ЛОГГЕР: сохраняет решение + триггерит событие для UI */
+function logDecision(payload, decision) {
+  try {
+    const entry = { payload, decision, ts: Date.now() };
+    const logs = _readLogs();
+    logs.push(entry);
+    if (logs.length > LOG_CAP) logs.splice(0, logs.length - LOG_CAP); // не даём расти бесконечно
+    _writeLogs(logs);
+    const total = logs.length;
+    console.log("📊 Decision logged. Total:", total);
+    window.dispatchEvent(new CustomEvent("logs:updated", { detail: { total } }));
+  } catch (e) {
+    console.error("logDecision failed:", e);
+  }
+}
+
+
 function clamp(n, min, max) { return Math.max(min, Math.min(max, n)); }
 function greenDurationFromScore(score) { const p = clamp(score, 0, 100) / 100; return Math.round(MIN_GREEN_MS + p * (MAX_GREEN_MS - MIN_GREEN_MS)); }
 function useTicker(running) { const [tick, setTick] = useState(0); useEffect(() => { if (!running) return; const id = setInterval(() => setTick((t) => t + 1), TICK_MS); return () => clearInterval(id); }, [running]); return tick; }
@@ -632,14 +679,20 @@ return () => {
 
 
 async function getModelDecision(payload) {
-  const res = await fetch("/api/decision", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-  if (!res.ok) throw new Error("Model API failed");
-  return res.json(); // { nextDir, greenMs, reason }
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), 4000); // 4s timeout
+  try {
+    const res = await fetch("/api/decision", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: ctrl.signal,
+    });
+    if (!res.ok) throw new Error("Model API failed");
+    return await res.json(); // { nextDir, greenMs, reason }
+  } finally { clearTimeout(to); }
 }
+
 
 function MiniCross({ activeAxis, phase }) {
   // activeAxis: "A" (North-South) | "B" (East-West)
@@ -758,6 +811,12 @@ function useTrafficProvider({
     const ctrl = new AbortController();
     inFlightRef.current = ctrl;
     const to = setTimeout(() => ctrl.abort(), timeoutMs);
+    const FPS = 30;
+function animate() {
+  // ... обновление логики и отрисовка кадра ...
+  setTimeout(() => requestAnimationFrame(animate), 1000 / FPS);
+}
+requestAnimationFrame(animate);
 
     try {
       const res = await fetch(`/api/traffic?bbox=${encodeURIComponent(JSON.stringify(bbox))}`, {
@@ -934,6 +993,9 @@ function decideNextPhaseLocally({ counts, waits, lastGreenDir }) {
 
 
 
+
+
+
 import Tutorial, { wasTutorialSeen } from "./components/Tutorial.jsx";
 export default function App() {
   const [theme, setTheme] = useState("day");
@@ -941,6 +1003,12 @@ export default function App() {
   const [scenario, setScenario] = useState(SCENARIOS[0]);
   const [running, setRunning] = useState(false);
   const [index, setIndex] = useState(0);
+  // ====== LOGGING UI STATE ======
+const [logCount, setLogCount] = useState(0);
+const [logsOpen, setLogsOpen] = useState(false);
+const [recentLogs, setRecentLogs] = useState([]);
+
+
   const [phase, setPhase] = useState("A"); // "A" | "B" | "PED"
   const pendingVehicularRef = useRef(null); // что включим после PED
   const [phaseEndAt, setPhaseEndAt] = useState(Date.now() + MIN_GREEN_MS);
@@ -979,6 +1047,32 @@ useEffect(() => {
   const saved = localStorage.getItem('theme');
   if (saved === 'day' || saved === 'night') setTheme(saved);
 }, []);
+
+// Инициализируем счётчик и подписываемся на обновления
+useEffect(() => {
+  setLogCount(getLogsCount());
+  setRecentLogs(getRecentLogs(20));
+
+  const onUpdated = (e) => {
+    const total = e?.detail?.total ?? getLogsCount();
+    setLogCount(total);
+    // обновляем предпросмотр только если панель открыта, чтобы не дёргать лишний раз
+    if (logsOpen) setRecentLogs(getRecentLogs(20));
+  };
+  const onStorage = (e) => {
+    if (e.key === LOG_KEY) {
+      setLogCount(getLogsCount());
+      if (logsOpen) setRecentLogs(getRecentLogs(20));
+    }
+  };
+  window.addEventListener("logs:updated", onUpdated);
+  window.addEventListener("storage", onStorage);
+  return () => {
+    window.removeEventListener("logs:updated", onUpdated);
+    window.removeEventListener("storage", onStorage);
+  };
+}, [logsOpen]);
+
 
 // при смене — сохранить
 useEffect(() => {
@@ -1077,7 +1171,7 @@ const counts = useMemo(() => {
                 : phase === "B" ? [false,true,false,true]
                 :                  [false,false,false,false]; // PED
     const next = [...prev];
-    for (let i = 0; i < 4; i++) next[i] = green[i] ? 0 : Math.min(prev[i] + Math.ceil(TICK_MS/1000), 3600);
+    for (let i = 0; i < 4; i++) next[i] = green[i] ? 0 : Math.min(prev[i] + TICK_MS/1000, 3600);
     return next;
   });
 
@@ -1095,20 +1189,31 @@ const counts = useMemo(() => {
         // опционально: outflowNS/EW, incidentSide — если используешь
       };
 
-      const local = decideNextPhaseLocally(payload);
 
-getModelDecision(payload)
+    const local = decideNextPhaseLocally(payload);
+
+    
+// 1. Локальное решение
+  const localDecision = decideNextPhaseLocally(payload);
+  logDecision(payload, localDecision);
+
+  getModelDecision(payload)
   .then(({ nextDir, greenMs }) => {
-    const dir = (nextDir === "A" || nextDir === "B") ? nextDir : local.nextDir;
-    const dur = clamp(greenMs ?? local.greenMs, MIN_GREEN_MS, MAX_GREEN_MS);
+    const dir = (nextDir === "A" || nextDir === "B") ? nextDir : localDecision.nextDir;
+    const dur = clamp(greenMs ?? localDecision.greenMs, MIN_GREEN_MS, MAX_GREEN_MS);
     pendingVehicularRef.current = { dir, dur };
   })
-  .catch(() => {
-    pendingVehicularRef.current = { dir: local.nextDir, dur: local.greenMs };
+  .catch((err) => {
+    console.warn("AI decision failed, fallback to local:", err);
+    pendingVehicularRef.current = { dir: localDecision.nextDir, dur: localDecision.greenMs };
   });
 
-setPhase("PED");
-setPhaseEndAt(Date.now() + PED_MS);
+
+
+  // 4. Входим в фазу PED
+  setPhase("PED");
+  setPhaseEndAt(Date.now() + PED_MS);
+
 
     } else if (phase === "PED") {
       // Закончилась пешеходная пауза — включаем отложенный авто-зелёный
@@ -1401,14 +1506,117 @@ setAdStats((prev) => {
 <li className="text-xs text-gray-500">
   Pricing: {pricing.model} = ${pricing.value} → CPM ${getCPM().toFixed(2)}, CPI ${getCPI().toFixed(4)}
 </li>
+<li className="mt-2 font-semibold">Data Logging</li>
+<li>Situations logged: <strong>{logCount}</strong></li>
+<li className="flex gap-2 mt-1">
+  <button
+    onClick={() => { setLogsOpen(true); setRecentLogs(getRecentLogs(20)); }}
+    className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white hover:bg-gray-50"
+  >
+    View last 20
+  </button>
+  <button
+    onClick={() => exportLogsToFile()}
+    className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white hover:bg-gray-50"
+  >
+    Export JSON
+  </button>
+  <button
+    onClick={() => { if (confirm('Очистить все сохранённые логи?')) { clearLogs(); setRecentLogs([]); } }}
+    className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white hover:bg-gray-50 text-rose-600"
+  >
+    Clear
+  </button>
+
+  <button
+    onClick={() => {
+      const payload = {
+        counts: { N: 5, E: 3, S: 4, W: 2 },
+        waits:  { N: 10, E: 20, S: 5, W: 15 },
+        scenarioId: 'test',
+        lastGreenDir: 'A',
+      };
+      const decision = { nextDir: 'B', greenMs: 9000, reason: 'manual test' };
+      logDecision(payload, decision);
+      alert('Test log saved');
+    }}
+    className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white hover:bg-gray-50"
+    title="Создать тестовую запись в лог"
+  >
+    Test Log
+  </button>
+</li>
+
         
             </ul>
           </div>
         </div>
       </div>
+      {/* Logs Modal */}
+{logsOpen && (
+  <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+    <div className="w-full max-w-4xl bg-white rounded-2xl shadow-2xl overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b">
+        <h3 className="font-semibold">Recent logs (last 20 of {logCount})</h3>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setRecentLogs(getRecentLogs(20)); }}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white hover:bg-gray-50"
+          >
+            Refresh
+          </button>
+          <button
+            onClick={() => setLogsOpen(false)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold border bg-white hover:bg-gray-50"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+      <div className="max-h-[70vh] overflow-auto text-sm">
+        <table className="w-full">
+          <thead className="sticky top-0 bg-gray-50">
+            <tr className="text-left">
+              <th className="px-3 py-2 w-40">Time</th>
+              <th className="px-3 py-2">Counts N/E/S/W</th>
+              <th className="px-3 py-2">Waits N/E/S/W</th>
+              <th className="px-3 py-2">Decision</th>
+              <th className="px-3 py-2">Green (s)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {recentLogs.map((row, i) => {
+              const ts = new Date(row.ts).toLocaleString();
+              const c = row.payload?.counts || {};
+              const w = row.payload?.waits || {};
+              const d = row.decision || {};
+              return (
+                <tr key={i} className="border-t">
+                  <td className="px-3 py-2 whitespace-nowrap">{ts}</td>
+                  <td className="px-3 py-2">N:{c.N ?? "-"} / E:{c.E ?? "-"} / S:{c.S ?? "-"} / W:{c.W ?? "-"}</td>
+                  <td className="px-3 py-2">N:{w.N ?? "-"} / E:{w.E ?? "-"} / S:{w.S ?? "-"} / W:{w.W ?? "-"}</td>
+                  <td className="px-3 py-2">{d.nextDir ?? "-"}</td>
+                  <td className="px-3 py-2">{Math.round((d.greenMs ?? 0) / 1000)}</td>
+                </tr>
+              );
+            })}
+            {recentLogs.length === 0 && (
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-500">Нет записей</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      <div className="px-4 py-3 border-t text-xs text-gray-500">
+        Хранятся только локально (localStorage). Export сохраняет весь массив в JSON.
+      </div>
+    </div>
+  </div>
+)}
+
 
       {/* Tutorial modal */}
 <Tutorial open={tutorialOpen} onClose={() => setTutorialOpen(false)} />
     </div>
+    
   );
 }
