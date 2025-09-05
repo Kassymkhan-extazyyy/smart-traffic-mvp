@@ -183,8 +183,8 @@ function IntersectionMini({ counts, phase, theme = 'day', running = false, onImp
   const MAX_PER_LANE = 8;      // кап машин на полосе (держим FPS)
   const ROAD_W = 16;           // ширина дороги в % (та же геометрия)
   const LANE_GAP = 0.22;       // доля половины дороги между полосами (позиционный сдвиг)
-  const STOP_POS = 0.985;      // где «стоп‑линия» (относит. позиция в 0..1)
-  const CENTER_GAP = 6;        // ядро перекрёстка в % (не трогаем)
+  const STOP_POS = 0.80;   // машины останавливаются раньше — есть путь для «разгона»
+  const CENTER_GAP = 6;    
 
   // плотная сетка домов по углам (как ранее)
   const GRID = { rows: 3, cols: 4 };
@@ -237,7 +237,7 @@ function IntersectionMini({ counts, phase, theme = 'day', running = false, onImp
   const ensure = (laneArr, target) => {
     while (laneArr.length < target) {
       laneArr.push({
-        pos: Math.random() * 0.9,
+        pos: 0.0 + Math.random() * 0.35, 
         speed: 0.12 + Math.random() * 0.08,
         jitter: (Math.random() - 0.5) * 0.02,
         type: (() => {
@@ -422,15 +422,15 @@ const updateLane = (arr, green, dt, dir, crossedRef) => {
     const old = car.pos;
 
     if (green) {
-      car.pos += v * dt * 0.001 * 0.42;
+      car.pos += v * dt * 0.001 * 0.60;
       if (old < 1.0 && car.pos >= 1.0) {
         // засчитываем показ (машина прошла «линию билборда»)
         crossedRef.current[dir] = (crossedRef.current[dir] || 0) + 1;
       }
-      if (car.pos > 1.3) car.pos = -0.1;
+      if (car.pos > 1.1) car.pos = 0.0; 
     } else {
       if (car.pos < STOP_POS) {
-        car.pos = Math.min(STOP_POS, car.pos + v * dt * 0.001 * 0.28);
+        car.pos = Math.min(STOP_POS, car.pos + v * dt * 0.001 * 0.35);
       }
     }
 
@@ -811,12 +811,7 @@ function useTrafficProvider({
     const ctrl = new AbortController();
     inFlightRef.current = ctrl;
     const to = setTimeout(() => ctrl.abort(), timeoutMs);
-    const FPS = 30;
-function animate() {
-  // ... обновление логики и отрисовка кадра ...
-  setTimeout(() => requestAnimationFrame(animate), 1000 / FPS);
-}
-requestAnimationFrame(animate);
+
 
     try {
       const res = await fetch(`/api/traffic?bbox=${encodeURIComponent(JSON.stringify(bbox))}`, {
