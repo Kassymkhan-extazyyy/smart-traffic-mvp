@@ -306,7 +306,7 @@ function IntersectionMini({ counts, phase, theme = 'day', running = false, onImp
     return plan;
   };
 
-  // перерисовка
+  // перерисовкағо
   React.useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas?.getContext('2d', { alpha: false });
@@ -340,6 +340,8 @@ function IntersectionMini({ counts, phase, theme = 'day', running = false, onImp
         ctx.fillStyle = b.tone === 'A' ? palette.houseA : palette.houseB;
         ctx.fillRect(PX(b.x,width), PX(b.y,height), PX(b.w,width), PX(b.h,height));
       });
+
+      
 
       // дороги
       ctx.fillStyle = palette.asphalt;
