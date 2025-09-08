@@ -235,30 +235,33 @@ function IntersectionMini({ counts, phase, theme = 'day', running = false, onImp
   const lane1Target = capTotal - lane0Target;
 
   const ensure = (laneArr, target) => {
-    while (laneArr.length < target) {
-      laneArr.push({
-        pos: 0.0 + Math.random() * 0.35, 
-        speed: 0.12 + Math.random() * 0.08,
-        jitter: (Math.random() - 0.5) * 0.02,
-        type: (() => {
-          const r = Math.random();
-          if (r < 0.10) return 'bus';
-          if (r < 0.25) return 'van';
-          return 'sedan';
-        })(),
-        color: (() => {
-          const day = ['#ef4444','#3b82f6','#22c55e','#f59e0b','#8b5cf6','#14b8a6','#64748b'];
-          const night = ['#fca5a5','#93c5fd','#86efac','#fde68a','#c4b5fd','#99f6e4','#94a3b8'];
-          const bank = (theme === 'night') ? night : day;
-          return bank[Math.floor(Math.random() * bank.length)];
-        })(),
-        braking: false,
-        blinkPhase: Math.random() * Math.PI * 2,
-      });
-    }
-    while (laneArr.length > target) laneArr.pop();
-    // 2) ⬇️ ВОТ СЮДА СТАВИМ «МИНИ-ПРАВКУ»
-    while (laneArr.length > target) laneArr.pop();
+   // ДОБАВЬ/ЗАМЕНИ внутри ensure(laneArr, target)
+while (laneArr.length < target) {
+  laneArr.push({
+    // раньше было: pos: 0.0 + Math.random()*0.35
+    // → спавним СРАЗУ вне экрана: новые «не мигают» на хвосте
+    pos: -0.25 + Math.random() * 0.20, // диапазон [-0.25, -0.05]
+    speed: 0.12 + Math.random() * 0.08,
+    jitter: (Math.random() - 0.5) * 0.02,
+    type: (() => { const r = Math.random(); if (r < 0.10) return 'bus'; if (r < 0.25) return 'van'; return 'sedan'; })(),
+    color: (() => {
+      const day = ['#ef4444','#3b82f6','#22c55e','#f59e0b','#8b5cf6','#14b8a6','#64748b'];
+      const night = ['#fca5a5','#93c5fd','#86efac','#fde68a','#c4b5fd','#99f6e4','#94a3b8'];
+      const bank = (theme === 'night') ? night : day;
+      return bank[Math.floor(Math.random() * bank.length)];
+    })(),
+    braking: false,
+    blinkPhase: Math.random() * Math.PI * 2,
+  });
+}
+
+// удаляем ТОЛЬКО тех, кто ещё не въехал (pos < 0)
+while (laneArr.length > target) {
+  const i = laneArr.findIndex(c => c.pos < 0);
+  if (i === -1) break;      // видимых не трогаем — пусть уедут сами
+  laneArr.splice(i, 1);
+}
+
   };
 
   ensure(lanes[0], lane0Target);
@@ -431,7 +434,11 @@ const updateLane = (arr, green, dt, dir, crossedRef) => {
         // засчитываем показ (машина прошла «линию билборда»)
         crossedRef.current[dir] = (crossedRef.current[dir] || 0) + 1;
       }
-      if (car.pos > 1.1) car.pos = 0.0; 
+      // СДЕЛАЙ ТАК
+if (car.pos > 1.1) {
+  // возвращаем машину за экран — она появится корректно с разгона
+  car.pos = -0.18 + Math.random() * 0.08; // [-0.18, -0.10]
+}
     } else {
       if (car.pos < STOP_POS) {
         car.pos = Math.min(STOP_POS, car.pos + v * dt * 0.001 * 0.35);
@@ -578,6 +585,7 @@ const drawCars = (tsNow = performance.now()) => {
     const baseX = PX(50 - ROAD_W/4, width);
     const xCenter = baseX + laneShift(lane, true);
     arr.forEach((car) => {
+      if (car.pos < 0) return; 
       const { w, h } = dims[car.type] || dims.sedan;
       const y = PX(5 + car.pos * (45 - CENTER_GAP/2), height);
       drawCar({ x: xCenter - w/2, y, w, h, color: car.color, dir: 'N', night, braking: car.braking, t: tsNow });
