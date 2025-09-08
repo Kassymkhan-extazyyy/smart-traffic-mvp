@@ -257,6 +257,8 @@ function IntersectionMini({ counts, phase, theme = 'day', running = false, onImp
       });
     }
     while (laneArr.length > target) laneArr.pop();
+    // 2) ⬇️ ВОТ СЮДА СТАВИМ «МИНИ-ПРАВКУ»
+    while (laneArr.length > target) laneArr.pop();
   };
 
   ensure(lanes[0], lane0Target);
@@ -448,6 +450,8 @@ const updateLane = (arr, green, dt, dir, crossedRef) => {
       }
       leaderPos = car.pos;
     }
+    // ⬇️ ДОБАВЬ ЭТО
+car.pos = Math.max(0, car.pos); // не даём новоприбывшим «провалиться» в отрицательную область
 
     if (!green && Math.abs(car.pos - STOP_POS) < 0.002) {
       car.braking = true;
