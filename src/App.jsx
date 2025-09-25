@@ -1268,7 +1268,7 @@ const counts = useMemo(() => {
 
         {/* Логотип + текст */}
     <div className="flex items-center gap-3">
-  <img src="/logo.png" alt="Logo" className="h-12 w-auto rounded-full shadow" />
+  <img src="/logo.png" alt="Logo" className="h-12 w-auto" />
   <h1 className="text-2xl font-bold">BaQdarsham – MVP (Simulation)</h1>
 
 
