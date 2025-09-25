@@ -79,17 +79,11 @@ export default function Tutorial({ open, onClose }) {
               <>
                 <button
                   onClick={() => closeAndRemember(false)}
-                  className="px-3 py-1.5 rounded-lg border"
+                  className="px-3 py-1.5 rounded-lg bg-black text-white"
                 >
                   Понял
                 </button>
-                <button
-                  onClick={() => closeAndRemember(true)}
-                  className="px-3 py-1.5 rounded-lg bg-black text-white"
-                  title="Больше не показывать"
-                >
-                  Не показывать снова
-                </button>
+              
               </>
             )}
           </div>
