@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 
-const LS_KEY = "sb_tutorial_seen_v1";
+const LS_KEY = "sb_tutorial_seen_v2";
 
 export default function Tutorial({ open, onClose }) {
   const [step, setStep] = useState(0);
@@ -40,7 +40,7 @@ export default function Tutorial({ open, onClose }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
       <div className="w-[min(96vw,560px)] rounded-2xl bg-white shadow-2xl p-5">
         <div className="mb-3">
           <h3 className="text-xl font-bold">{steps[step].title}</h3>

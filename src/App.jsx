@@ -13,7 +13,7 @@ const MIN_GREEN_MS = 7000;
 const MAX_GREEN_MS = 45000;
 const PED_MS = 10000;
 
-// ====== LOGGING HELPERS ======
+// ====== LOGGING HELPERS ====== 
 const LOG_KEY = "decisions";
 const LOG_CAP = 300_000; // мягкий лимит для localStorage, можно менять
 
