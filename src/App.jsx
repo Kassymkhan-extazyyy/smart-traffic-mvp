@@ -1038,10 +1038,16 @@ const [ads, setAds] = useState([
   { id: "ad3", text: "Smart Energy • AI-Optimized",       cls: "ad-g-purple",cpm: 30 },
   { id: "ad4", text: "BaQdarsham • Smarter Cities",       cls: "ad-g-cyan",  cpm: 35 },
 ]);
-// === Tutorial state ===
+
 const [tutorialOpen, setTutorialOpen] = useState(false);
+
 useEffect(() => {
-  // открываем только при первом заходе
+  if (typeof window === 'undefined') return;
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('tutorial') === '1') { // форс-показ
+    setTutorialOpen(true);
+    return;
+  }
   if (!wasTutorialSeen()) setTutorialOpen(true);
 }, []);
 const { score: liveScore, loading: trafficLoading, error: trafficErr, source, quota } =
